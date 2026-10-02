@@ -41,8 +41,7 @@ FILE_ALLOWLIST = (
     "assets/icon-set-v1.0/witnessops-vscodium.png",
     "assets/icon-set-v1.0/witnessops-screenshot.png",
 )
-OPTIONAL_FILES = ("assets/icon-set-v1.0/SOURCE.json",
-                  "tests/test_icon_set_package.py", "tools/preview_icon_set.py")
+OPTIONAL_FILES = ("tests/test_icon_set_package.py", "tools/preview_icon_set.py")
 # Frozen release inventories are trusted code constants, never learned from an archive.
 # Their records bind every native SVG and Work/Projects alias to the complete v1 set.
 V1_NATIVE_MANIFEST_DIGESTS = {
@@ -69,7 +68,7 @@ V1_CODE_DIGESTS = {
     "tests/test_icon_set_install.py":
         "a09af510c7076c08ba035f74e15979e6d572ac76fd5e263f8f24a6c080897352",
     "tests/test_icon_set_package.py":
-        "d601677506c926f55cc4b2e97e8837aed5f5e9ff127a6a96927bbfe820806806",
+        "fe32cd5b6b82ac2af360c428c73e3a5745a46c306caaf4125835f1a8f70d2029",
     "tests/test_icon_set_style.py":
         "1aacb9f0e79b0e21d0fbf3a7392d43a7e9da2e4851eb041e7edccf3e6f370df7",
     "tests/test_launcher_icon_overrides.py":
@@ -82,6 +81,30 @@ V1_CODE_DIGESTS = {
         "29394a14b473535e6b2f6228ba2676a2317bd20076cd8c2a8fb3b7818f31e25b",
 }
 V1_PACKER_DIGEST = hashlib.sha256(Path(__file__).resolve().read_bytes()).hexdigest()
+# Release instructions, linked attribution/license text and directory definitions
+# are approved bytes too. Archive checksums cannot supply their trusted reference.
+V1_RELEASE_METADATA_DIGESTS = {
+    "ICONSET.md":
+        "5ae586b5eb0910cd70759faa3bf7b6f27458e2c579cca50369dc4ad9e0ac3b6b",
+    "LICENSE":
+        "c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4",
+    "THIRD_PARTY_NOTICES.md":
+        "9c8f1dfe2353d3595e6fcdaecde8b6326405a52b04cd37a358cd8df85b56e4d1",
+    "licenses/Breeze-COPYING-ICONS":
+        "38db4d88ea3a691d6a43bf016339b55eb8b367dd7e4cb39bd8cfaa36779a6e77",
+    "licenses/CC-BY-SA-4.0.txt":
+        "28a9529c7d0bb4dc51f4bf5c116a3d16ef247a052f7591466768ddf563fd1cf5",
+    "licenses/GPL-3.0.txt":
+        "3972dc9744f6499f0f9b2dbf76696f2ae7ad8af9b23dde66d6af86c9dfb36986",
+    "licenses/LGPL-2.1.txt":
+        "dc626520dcd53a22f727af3ee42c770e56c97a64fe3adb063799d8ab032fe551",
+    "packages/icon-set-v1.0/WitnessOpsIconsV1_0/COPYING-BREEZE-ICONS":
+        "38db4d88ea3a691d6a43bf016339b55eb8b367dd7e4cb39bd8cfaa36779a6e77",
+    "packages/icon-set-v1.0/WitnessOpsIconsV1_0/COPYRIGHT-BREEZE":
+        "f642cf1a5d2597993fe9c10fe8278bf2f9b1e444176c3e224c7b9325a57a6f63",
+    "packages/icon-set-v1.0/WitnessOpsIconsV1_0/index.theme":
+        "12ac163c7ca2e9ef000a23b46fc5434968eb07d6ff3b7873adc008569eacae5a",
+}
 # Fixed v1 budgets include generous margins over the complete committed package.
 READ_CHUNK_BYTES = 64 * 1024
 MAX_COMPRESSED_BYTES = 128 * 1024 * 1024
@@ -316,9 +339,23 @@ def validate_code_payload(entries: dict[str, bytes | VerifiedFile]) -> None:
             raise ValueError("Frozen v1 code inventory differs: " + name)
 
 
+def validate_release_metadata_payload(entries: dict[str, bytes | VerifiedFile]) -> None:
+    manifests = set(V1_NATIVE_MANIFEST_DIGESTS) | {"assets/icon-set-v1.0/artwork.json"}
+    declared = {name for name in FILE_ALLOWLIST + OPTIONAL_FILES
+                if not name.endswith((".py", ".png")) and name not in manifests}
+    declared.update(THEME_DIRECTORY + "/" + name for name in
+                    ("index.theme", "COPYRIGHT-BREEZE", "COPYING-BREEZE-ICONS"))
+    if declared != V1_RELEASE_METADATA_DIGESTS.keys():
+        raise ValueError("Unpinned public release metadata")
+    for name, expected_digest in V1_RELEASE_METADATA_DIGESTS.items():
+        if name in entries and digest(entries[name]) != expected_digest:
+            raise ValueError("Frozen v1 release metadata differs: " + name)
+
+
 def validate_payload(entries: dict[str, bytes | VerifiedFile], directories: set[str]) -> None:
     require_payload(entries)
     validate_code_payload(entries)
+    validate_release_metadata_payload(entries)
     index_name = THEME_DIRECTORY + "/index.theme"
     if index_name not in entries:
         raise ValueError("Missing public theme index")

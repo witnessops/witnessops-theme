@@ -108,6 +108,15 @@ class IconSetPackageTest(unittest.TestCase):
                                    package.digest(self.artwork.read_bytes()))
         artwork_pin.start()
         self.addCleanup(artwork_pin.stop)
+        self.release_metadata_pins = dict(package.V1_RELEASE_METADATA_DIGESTS)
+        # Approve the miniature guide and index once. Rewritten source/archive
+        # metadata cannot redefine the trusted fixture after this setup.
+        metadata_pins = patch.dict(package.V1_RELEASE_METADATA_DIGESTS, {
+            name: package.digest((self.root / name).read_bytes())
+            for name in self.release_metadata_pins
+        })
+        metadata_pins.start()
+        self.addCleanup(metadata_pins.stop)
         for name in (".local/private.svg", ".git/history", "packages/user-v1/old.svg", "README.md"):
             path = self.root / name
             path.parent.mkdir(parents=True, exist_ok=True)
@@ -162,6 +171,9 @@ class IconSetPackageTest(unittest.TestCase):
     def test_file_only_checkout_collects_after_unused_native_directories_are_pruned(self):
         index = self.theme / "index.theme"
         index.write_text(prune_empty_icon_directories(index.read_text(), self.theme))
+        # This test deliberately approves a pruned miniature release. Other
+        # index mutations must continue to use the original fixture pin.
+        package.V1_RELEASE_METADATA_DIGESTS[package.THEME_DIRECTORY + "/index.theme"] = package.digest(index.read_bytes())
         clone = self.root / "fresh-checkout"
         # Git preserves files and their parents, but drops empty directories.
         for path in tuple(self.root.rglob("*")):
@@ -394,6 +406,8 @@ class IconSetPackageTest(unittest.TestCase):
     def test_notice_file_is_canonical_and_required(self):
         notice = self.root / "THIRD_PARTY_NOTICES.md"
         notice.write_bytes(b"Current source attribution and license notices\n")
+        # Deliberately approve this notice fixture before testing canonical copying.
+        package.V1_RELEASE_METADATA_DIGESTS["THIRD_PARTY_NOTICES.md"] = package.digest(notice.read_bytes())
         result = package.pack(self.root / "notices.tar.gz", self.root)
         with tarfile.open(result["archive"]) as archive:
             data = archive.extractfile(package.ARCHIVE_ROOT + "/THIRD_PARTY_NOTICES.md").read()
@@ -749,6 +763,128 @@ class IconSetPackageTest(unittest.TestCase):
         self.assertFalse(any(name in entries for name in package.OPTIONAL_FILES if name.endswith(".py")))
         archive = self.write_self_manifested_archive(entries, directories)
         self.assertEqual(package.verify_archive(archive)["files"], len(entries))
+
+    def test_frozen_metadata_pins_cover_guide_and_index_and_match_committed_sources(self):
+        self.assertEqual(set(self.release_metadata_pins), {
+            "ICONSET.md", "LICENSE", "THIRD_PARTY_NOTICES.md",
+            "licenses/Breeze-COPYING-ICONS", "licenses/GPL-3.0.txt",
+            "licenses/LGPL-2.1.txt", "licenses/CC-BY-SA-4.0.txt",
+            package.THEME_DIRECTORY + "/index.theme",
+            package.THEME_DIRECTORY + "/COPYRIGHT-BREEZE",
+            package.THEME_DIRECTORY + "/COPYING-BREEZE-ICONS",
+        })
+        for name, expected in self.release_metadata_pins.items():
+            with self.subTest(name=name):
+                self.assertEqual(package.digest((package.ROOT / name).read_bytes()), expected)
+
+    def test_verifier_rejects_matching_readme_and_guide_replacement_with_rewritten_checksums(self):
+        entries, directories = package.collect(self.root)
+        replaced = b"# Installation\nRun the substituted download command before installing.\n"
+        entries["README.md"] = entries["ICONSET.md"] = replaced
+        archive = self.write_self_manifested_archive(entries, directories)
+        with self.assertRaisesRegex(ValueError, "Frozen v1 release metadata differs: ICONSET.md"):
+            package.verify_archive(archive)
+
+    def test_collect_rejects_replaced_installation_guide(self):
+        (self.root / "ICONSET.md").write_bytes(b"# Installation\nRun substituted commands.\n")
+        with self.assertRaisesRegex(ValueError, "Frozen v1 release metadata differs: ICONSET.md"):
+            package.collect(self.root)
+
+    def test_verifier_rejects_every_self_manifested_release_metadata_substitution(self):
+        original, directories = package.collect(self.root)
+        for name in self.release_metadata_pins:
+            with self.subTest(name=name):
+                entries = dict(original)
+                entries[name] += b"\nSubstituted release instructions or metadata.\n"
+                if name == "ICONSET.md":
+                    entries["README.md"] = entries[name]
+                archive = self.write_self_manifested_archive(entries, directories)
+                with self.assertRaisesRegex(ValueError, "Frozen v1 release metadata differs: " + name):
+                    package.verify_archive(archive)
+
+    def test_collect_rejects_every_release_metadata_source_substitution(self):
+        original, _ = package.collect(self.root)
+        for name in self.release_metadata_pins:
+            with self.subTest(name=name):
+                source = self.root / name
+                source.write_bytes(original[name] + b"\nSubstituted release metadata.\n")
+                try:
+                    with self.assertRaisesRegex(ValueError, "Frozen v1 release metadata differs: " + name):
+                        package.collect(self.root)
+                finally:
+                    source.write_bytes(original[name])
+
+    def test_new_public_metadata_requires_an_explicit_trusted_pin(self):
+        entries, directories = package.collect(self.root)
+        name = "docs/unpinned.md"
+        entries[name] = b"# Newly allowlisted instructions without a trusted pin\n"
+        target = self.root / name
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(entries[name])
+        archive = self.write_self_manifested_archive(entries, directories)
+        with patch.object(package, "OPTIONAL_FILES", package.OPTIONAL_FILES + (name,)):
+            with self.assertRaisesRegex(ValueError, "Unpinned public release metadata"):
+                package.verify_archive(archive)
+            with self.assertRaisesRegex(ValueError, "Unpinned public release metadata"):
+                package.collect(self.root)
+
+    def test_unused_source_metadata_is_excluded_and_refused_in_repacked_archive(self):
+        name = "assets/icon-set-v1.0/SOURCE.json"
+        (self.root / name).write_bytes(b'{"instructions": "substituted installation command"}')
+        entries, directories = package.collect(self.root)
+        self.assertNotIn(name, entries)
+        entries[name] = (self.root / name).read_bytes()
+        archive = self.write_self_manifested_archive(entries, directories)
+        with self.assertRaisesRegex(ValueError, "outside the publication allowlist"):
+            package.verify_archive(archive)
+
+    def mutated_theme_indexes(self, original):
+        lines = original.splitlines(keepends=True)
+        without_directories = "".join(line for line in lines if not line.startswith("Directories="))
+        without_scaled = "".join(line for line in lines if not line.startswith("ScaledDirectories="))
+        missing = "".join(line for line in lines
+                          if not line.startswith(("Directories=", "ScaledDirectories=")))
+        empty = "".join(line.split("=", 1)[0] + "=\n"
+                        if line.startswith(("Directories=", "ScaledDirectories=")) else line
+                        for line in lines)
+        partial = "".join("Directories=apps/48\n" if line.startswith("Directories=")
+                          else "ScaledDirectories=\n" if line.startswith("ScaledDirectories=")
+                          else line for line in lines)
+        return (
+            ("empty directory lists", empty),
+            ("missing directory lists", missing),
+            ("missing Directories", without_directories),
+            ("missing ScaledDirectories", without_scaled),
+            ("partial directory lists", partial),
+            ("altered Size", original.replace("[apps/48]\nSize=48\n", "[apps/48]\nSize=1\n")),
+            ("altered Context", original.replace("[apps/48]\n", "[apps/48]\nContext=Actions\n")),
+            ("missing advertised section", original.replace("[apps/48]\nSize=48\n", "")),
+        )
+
+    def test_collect_rejects_index_directory_lists_and_section_mutations(self):
+        index = self.theme / "index.theme"
+        original = index.read_text()
+        for label, changed in self.mutated_theme_indexes(original):
+            with self.subTest(mutation=label):
+                self.assertNotEqual(changed, original)
+                index.write_text(changed)
+                try:
+                    with self.assertRaisesRegex(ValueError, "Frozen v1 release metadata differs: "
+                                                + package.THEME_DIRECTORY + "/index.theme"):
+                        package.collect(self.root)
+                finally:
+                    index.write_text(original)
+
+    def test_verifier_rejects_index_mutations_with_rewritten_checksums(self):
+        original, directories = package.collect(self.root)
+        name = package.THEME_DIRECTORY + "/index.theme"
+        for label, changed in self.mutated_theme_indexes(original[name].decode()):
+            with self.subTest(mutation=label):
+                entries = dict(original)
+                entries[name] = changed.encode()
+                archive = self.write_self_manifested_archive(entries, directories)
+                with self.assertRaisesRegex(ValueError, "Frozen v1 release metadata differs: " + name):
+                    package.verify_archive(archive)
 
     def test_optional_preview_tool_is_allowlisted(self):
         source = self.root / "tools/preview_icon_set.py"

@@ -209,6 +209,13 @@ from the trusted module file when it loads; the archive and alternate source
 roots cannot supply that reference. Optional tools may be absent, but any
 included tool must match its pin.
 
+Release instructions, linked license and attribution notices, and the exact
+`index.theme` bytes also have trusted digest pins. The generated `README.md`
+must match the pinned guide. Rewritten checksums cannot authorize altered
+instructions, missing advertised directories or changed theme sections.
+Changes to these files require reviewing their pins alongside the release.
+Provenance comes from the pinned native, alias and artwork manifests.
+
 Archive verification hashes input and file bodies in chunks of at most 64 KiB.
 It permits at most 60,000 entries, 120,000 headers (including local PAX path
 extensions), 128 MiB compressed input, 256 MiB decompressed tar data and
