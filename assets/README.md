@@ -1,5 +1,5 @@
-# Source assets
+# Source artwork
 
-Source artwork and provenance belong here. This bootstrap contains no artwork.
+`icon-set-v1.0/` contains seven selected WitnessOps PNG sources, per-size render hashes, the native Breeze source/output provenance and typed-folder alias records.
 
-Add source and license records alongside each future asset. Keep generated previews and host-specific evidence in ignored local paths.
+Design experiments, reference boards and host-collected vendor artwork are private local inputs and are excluded from this publication. See [the component guide](../ICONSET.md).

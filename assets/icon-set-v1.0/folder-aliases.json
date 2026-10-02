@@ -1,0 +1,138 @@
+{
+  "schema_version": 1,
+  "theme_identity": "WitnessOpsIconsV1_0",
+  "records": [
+    {
+      "path": "places/16/folder-work.svg",
+      "source": "places/16/folder-documents.svg",
+      "source_sha256": "1d4603768261c2807ff243ee7948ec4181071e922570ffcf36d052f1e8c32d7f",
+      "sha256": "1d4603768261c2807ff243ee7948ec4181071e922570ffcf36d052f1e8c32d7f"
+    },
+    {
+      "path": "places/16@2x/folder-work.svg",
+      "source": "places/16@2x/folder-documents.svg",
+      "source_sha256": "1d4603768261c2807ff243ee7948ec4181071e922570ffcf36d052f1e8c32d7f",
+      "sha256": "1d4603768261c2807ff243ee7948ec4181071e922570ffcf36d052f1e8c32d7f"
+    },
+    {
+      "path": "places/16@3x/folder-work.svg",
+      "source": "places/16@3x/folder-documents.svg",
+      "source_sha256": "1d4603768261c2807ff243ee7948ec4181071e922570ffcf36d052f1e8c32d7f",
+      "sha256": "1d4603768261c2807ff243ee7948ec4181071e922570ffcf36d052f1e8c32d7f"
+    },
+    {
+      "path": "places/22/folder-work.svg",
+      "source": "places/22/folder-documents.svg",
+      "source_sha256": "34f11f3f9452b7d2389599d52540abfb70c2aa074e1119c2777488fc4e7412c1",
+      "sha256": "34f11f3f9452b7d2389599d52540abfb70c2aa074e1119c2777488fc4e7412c1"
+    },
+    {
+      "path": "places/22@2x/folder-work.svg",
+      "source": "places/22@2x/folder-documents.svg",
+      "source_sha256": "34f11f3f9452b7d2389599d52540abfb70c2aa074e1119c2777488fc4e7412c1",
+      "sha256": "34f11f3f9452b7d2389599d52540abfb70c2aa074e1119c2777488fc4e7412c1"
+    },
+    {
+      "path": "places/22@3x/folder-work.svg",
+      "source": "places/22@3x/folder-documents.svg",
+      "source_sha256": "34f11f3f9452b7d2389599d52540abfb70c2aa074e1119c2777488fc4e7412c1",
+      "sha256": "34f11f3f9452b7d2389599d52540abfb70c2aa074e1119c2777488fc4e7412c1"
+    },
+    {
+      "path": "places/24/folder-work.svg",
+      "source": "places/24/folder-documents.svg",
+      "source_sha256": "6abc099f529648a899100f37bb31ee07aec101b09f0d04a1277311cfd6183c08",
+      "sha256": "6abc099f529648a899100f37bb31ee07aec101b09f0d04a1277311cfd6183c08"
+    },
+    {
+      "path": "places/32/folder-work.svg",
+      "source": "places/32/folder-documents.svg",
+      "source_sha256": "95f0b1e598534e27befe847bcba238a5e15fecace42626b19db32d7d2fb07e03",
+      "sha256": "95f0b1e598534e27befe847bcba238a5e15fecace42626b19db32d7d2fb07e03"
+    },
+    {
+      "path": "places/48/folder-work.svg",
+      "source": "places/48/folder-documents.svg",
+      "source_sha256": "8c76c94d3ccfaefb87f7e56d9026d79766a67e673d2c47a70a7161c0ae46d8dd",
+      "sha256": "8c76c94d3ccfaefb87f7e56d9026d79766a67e673d2c47a70a7161c0ae46d8dd"
+    },
+    {
+      "path": "places/64/folder-work.svg",
+      "source": "places/64/folder-documents.svg",
+      "source_sha256": "e6596617e12ebae340ff1618892dbe4cfdabf69d9309ad5669fa0bfe455f7cf4",
+      "sha256": "e6596617e12ebae340ff1618892dbe4cfdabf69d9309ad5669fa0bfe455f7cf4"
+    },
+    {
+      "path": "places/96/folder-work.svg",
+      "source": "places/96/folder-documents.svg",
+      "source_sha256": "9f5de54a4388c4258e322296f022e7e092eddf774142e78c7cf75dde41d68d2d",
+      "sha256": "9f5de54a4388c4258e322296f022e7e092eddf774142e78c7cf75dde41d68d2d"
+    },
+    {
+      "path": "places/16/folder-projects.svg",
+      "source": "places/16/folder-development.svg",
+      "source_sha256": "c5c73e63dc385c8ac647d3c310ffb067d5f48633199fd67218f7e2990cef70ce",
+      "sha256": "c5c73e63dc385c8ac647d3c310ffb067d5f48633199fd67218f7e2990cef70ce"
+    },
+    {
+      "path": "places/16@2x/folder-projects.svg",
+      "source": "places/16@2x/folder-development.svg",
+      "source_sha256": "c5c73e63dc385c8ac647d3c310ffb067d5f48633199fd67218f7e2990cef70ce",
+      "sha256": "c5c73e63dc385c8ac647d3c310ffb067d5f48633199fd67218f7e2990cef70ce"
+    },
+    {
+      "path": "places/16@3x/folder-projects.svg",
+      "source": "places/16@3x/folder-development.svg",
+      "source_sha256": "c5c73e63dc385c8ac647d3c310ffb067d5f48633199fd67218f7e2990cef70ce",
+      "sha256": "c5c73e63dc385c8ac647d3c310ffb067d5f48633199fd67218f7e2990cef70ce"
+    },
+    {
+      "path": "places/22/folder-projects.svg",
+      "source": "places/22/folder-development.svg",
+      "source_sha256": "b6deac7f716b04116729789763cc4ca6a90fc489035acbdaabe8cbee0e3c642d",
+      "sha256": "b6deac7f716b04116729789763cc4ca6a90fc489035acbdaabe8cbee0e3c642d"
+    },
+    {
+      "path": "places/22@2x/folder-projects.svg",
+      "source": "places/22@2x/folder-development.svg",
+      "source_sha256": "b6deac7f716b04116729789763cc4ca6a90fc489035acbdaabe8cbee0e3c642d",
+      "sha256": "b6deac7f716b04116729789763cc4ca6a90fc489035acbdaabe8cbee0e3c642d"
+    },
+    {
+      "path": "places/22@3x/folder-projects.svg",
+      "source": "places/22@3x/folder-development.svg",
+      "source_sha256": "b6deac7f716b04116729789763cc4ca6a90fc489035acbdaabe8cbee0e3c642d",
+      "sha256": "b6deac7f716b04116729789763cc4ca6a90fc489035acbdaabe8cbee0e3c642d"
+    },
+    {
+      "path": "places/24/folder-projects.svg",
+      "source": "places/24/folder-development.svg",
+      "source_sha256": "e09fff7cacffe7575c9de102bffcfbc6e1e66be70d8250c27ba94a36b470f394",
+      "sha256": "e09fff7cacffe7575c9de102bffcfbc6e1e66be70d8250c27ba94a36b470f394"
+    },
+    {
+      "path": "places/32/folder-projects.svg",
+      "source": "places/32/folder-development.svg",
+      "source_sha256": "13c9c056a3c315b2f878c3465243347e36742ad046768683a431b9c6967e65a6",
+      "sha256": "13c9c056a3c315b2f878c3465243347e36742ad046768683a431b9c6967e65a6"
+    },
+    {
+      "path": "places/48/folder-projects.svg",
+      "source": "places/48/folder-development.svg",
+      "source_sha256": "6d01e3209adeda3dc6726bbb4210dfbcb20c52a1f8147c82e5390960d66b197d",
+      "sha256": "6d01e3209adeda3dc6726bbb4210dfbcb20c52a1f8147c82e5390960d66b197d"
+    },
+    {
+      "path": "places/64/folder-projects.svg",
+      "source": "places/64/folder-development.svg",
+      "source_sha256": "0a664443e854ba1bba41839954ad2d44c18749a29c878703ba5966676ccd527e",
+      "sha256": "0a664443e854ba1bba41839954ad2d44c18749a29c878703ba5966676ccd527e"
+    },
+    {
+      "path": "places/96/folder-projects.svg",
+      "source": "places/96/folder-development.svg",
+      "source_sha256": "f96c94c9616e742a461cc8d6362cda08b38fff0ccb96905acc7bc5dc4a1adea5",
+      "sha256": "f96c94c9616e742a461cc8d6362cda08b38fff0ccb96905acc7bc5dc4a1adea5"
+    }
+  ]
+}

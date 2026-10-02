@@ -1,0 +1,420 @@
+{
+  "schema_version": 1,
+  "version": "1.0.0",
+  "theme_identity": "WitnessOpsIconsV1_0",
+  "method": "Built-in image generation from approved option 2; deterministic Qt size rendering; native SVG paint changes",
+  "selection": {
+    "direction": "Machined Carbon",
+    "comparison_sha256": "90dd2f88bf1fa1bbb00f6e112a212a724ee1ec171a424537c2405ac96efd28ee",
+    "blackbox": "Structural graphite cube with steel edges, petrol rear edge, top W and small red indicator",
+    "ai_cli": "Graphite connected viewport, narrow steel enclosure, copper prompt, petrol cursor and small faint dotted W",
+    "settings": "Standalone graphite gear with steel edge, open center and one petrol segment",
+    "folders": "Home and all native typed and named-color folders retain their geometry; graphite fronts, steel edges and original-color or petrol rear accents",
+    "blackbox_browser": "Distinct chamfered browser viewport with a prominent steel globe and petrol tab",
+    "credential_import": "Upright graphite credential card, clear steel key and petrol incoming arrow",
+    "vscodium": "Recognizable native branching coral on a graphite medallion with steel edge and restrained blue",
+    "screenshot": "Distinct open steel capture corners around a graphite camera aperture with one petrol segment"
+  },
+  "assets": [
+    {
+      "path": "assets/icon-set-v1.0/witnessops-ai-cli.png",
+      "sha256": "b9fe9d17ca73cde445516ac152001629dc36accbd6f9fc014f612f28eb2d5dd8",
+      "icon_keys": [
+        "utilities-terminal",
+        "konsole",
+        "org.kde.konsole",
+        "witnessops-ai-cli"
+      ]
+    },
+    {
+      "path": "assets/icon-set-v1.0/witnessops-blackbox.png",
+      "sha256": "10a7ee926d4b1d7827061eeb7ddfa0411197713adb2fc37e6816dcadc998e345",
+      "icon_keys": [
+        "witnessops-blackbox"
+      ]
+    },
+    {
+      "path": "assets/icon-set-v1.0/witnessops-blackbox-browser.png",
+      "sha256": "513fcaa1592dff81afc5d794d8d65c877985ed161da984215276419f077aca58",
+      "icon_keys": [
+        "blackbox-browser"
+      ]
+    },
+    {
+      "path": "assets/icon-set-v1.0/witnessops-credential-import.png",
+      "sha256": "96480f98f25c399c42b2ceb3c1fb0bc66118c5c2487a0b9fffc81ada2595fd88",
+      "icon_keys": [
+        "witnessops-credential-import"
+      ]
+    },
+    {
+      "path": "assets/icon-set-v1.0/witnessops-vscodium.png",
+      "sha256": "0d3c95b949ded5974ae6d13eb46fb1ac797f69d67854ffa8b7ea73a65b74f5a3",
+      "icon_keys": [
+        "com.vscodium.codium"
+      ]
+    },
+    {
+      "path": "assets/icon-set-v1.0/witnessops-screenshot.png",
+      "sha256": "c2ed241d13f1d02261e379f40bbb619f2f76d29b612563b3d70ecf082b0ac2e6",
+      "icon_keys": [
+        "spectacle"
+      ]
+    },
+    {
+      "path": "assets/icon-set-v1.0/witnessops-settings.png",
+      "sha256": "febeea60628af12d7889aff5de1896746f4a766e665bf99d07183f77173352b1",
+      "icon_keys": [
+        "preferences-system",
+        "systemsettings",
+        "org.kde.systemsettings"
+      ]
+    }
+  ],
+  "rendered": [
+    {
+      "path": "local/16/apps/utilities-terminal.png",
+      "sha256": "2194fe2392300ff8d79a279f9824b5df052e2cb661e67d76f15800c4900e1148"
+    },
+    {
+      "path": "local/16/apps/konsole.png",
+      "sha256": "2194fe2392300ff8d79a279f9824b5df052e2cb661e67d76f15800c4900e1148"
+    },
+    {
+      "path": "local/16/apps/org.kde.konsole.png",
+      "sha256": "2194fe2392300ff8d79a279f9824b5df052e2cb661e67d76f15800c4900e1148"
+    },
+    {
+      "path": "local/16/apps/witnessops-ai-cli.png",
+      "sha256": "2194fe2392300ff8d79a279f9824b5df052e2cb661e67d76f15800c4900e1148"
+    },
+    {
+      "path": "local/24/apps/utilities-terminal.png",
+      "sha256": "1241387a37108d7953c3817d3555726a6dd6c1e8aa037723360346bf542ab08d"
+    },
+    {
+      "path": "local/24/apps/konsole.png",
+      "sha256": "1241387a37108d7953c3817d3555726a6dd6c1e8aa037723360346bf542ab08d"
+    },
+    {
+      "path": "local/24/apps/org.kde.konsole.png",
+      "sha256": "1241387a37108d7953c3817d3555726a6dd6c1e8aa037723360346bf542ab08d"
+    },
+    {
+      "path": "local/24/apps/witnessops-ai-cli.png",
+      "sha256": "1241387a37108d7953c3817d3555726a6dd6c1e8aa037723360346bf542ab08d"
+    },
+    {
+      "path": "local/32/apps/utilities-terminal.png",
+      "sha256": "0db0267bd65a2fcc14148932db2ce6a50a23020f53ff7156f95d9ccb16894f0b"
+    },
+    {
+      "path": "local/32/apps/konsole.png",
+      "sha256": "0db0267bd65a2fcc14148932db2ce6a50a23020f53ff7156f95d9ccb16894f0b"
+    },
+    {
+      "path": "local/32/apps/org.kde.konsole.png",
+      "sha256": "0db0267bd65a2fcc14148932db2ce6a50a23020f53ff7156f95d9ccb16894f0b"
+    },
+    {
+      "path": "local/32/apps/witnessops-ai-cli.png",
+      "sha256": "0db0267bd65a2fcc14148932db2ce6a50a23020f53ff7156f95d9ccb16894f0b"
+    },
+    {
+      "path": "local/48/apps/utilities-terminal.png",
+      "sha256": "90419c2faa91f7c07c2bdfbcffc5b7876cd5a5719a23f887554b2cb55dfab35f"
+    },
+    {
+      "path": "local/48/apps/konsole.png",
+      "sha256": "90419c2faa91f7c07c2bdfbcffc5b7876cd5a5719a23f887554b2cb55dfab35f"
+    },
+    {
+      "path": "local/48/apps/org.kde.konsole.png",
+      "sha256": "90419c2faa91f7c07c2bdfbcffc5b7876cd5a5719a23f887554b2cb55dfab35f"
+    },
+    {
+      "path": "local/48/apps/witnessops-ai-cli.png",
+      "sha256": "90419c2faa91f7c07c2bdfbcffc5b7876cd5a5719a23f887554b2cb55dfab35f"
+    },
+    {
+      "path": "local/64/apps/utilities-terminal.png",
+      "sha256": "4fdd0407bf56231de969d8d7b605a4207f640366ff3f63b7f2b9e76cbf6f579a"
+    },
+    {
+      "path": "local/64/apps/konsole.png",
+      "sha256": "4fdd0407bf56231de969d8d7b605a4207f640366ff3f63b7f2b9e76cbf6f579a"
+    },
+    {
+      "path": "local/64/apps/org.kde.konsole.png",
+      "sha256": "4fdd0407bf56231de969d8d7b605a4207f640366ff3f63b7f2b9e76cbf6f579a"
+    },
+    {
+      "path": "local/64/apps/witnessops-ai-cli.png",
+      "sha256": "4fdd0407bf56231de969d8d7b605a4207f640366ff3f63b7f2b9e76cbf6f579a"
+    },
+    {
+      "path": "local/128/apps/utilities-terminal.png",
+      "sha256": "13027506c196a7c4e8a9baebe708c437bec4f47649a199888968a095968b843e"
+    },
+    {
+      "path": "local/128/apps/konsole.png",
+      "sha256": "13027506c196a7c4e8a9baebe708c437bec4f47649a199888968a095968b843e"
+    },
+    {
+      "path": "local/128/apps/org.kde.konsole.png",
+      "sha256": "13027506c196a7c4e8a9baebe708c437bec4f47649a199888968a095968b843e"
+    },
+    {
+      "path": "local/128/apps/witnessops-ai-cli.png",
+      "sha256": "13027506c196a7c4e8a9baebe708c437bec4f47649a199888968a095968b843e"
+    },
+    {
+      "path": "local/256/apps/utilities-terminal.png",
+      "sha256": "2ca32f8ef0a162c25b28c53b2cfcbfbe852d8089088ef5c0f6f9863af77ca1e5"
+    },
+    {
+      "path": "local/256/apps/konsole.png",
+      "sha256": "2ca32f8ef0a162c25b28c53b2cfcbfbe852d8089088ef5c0f6f9863af77ca1e5"
+    },
+    {
+      "path": "local/256/apps/org.kde.konsole.png",
+      "sha256": "2ca32f8ef0a162c25b28c53b2cfcbfbe852d8089088ef5c0f6f9863af77ca1e5"
+    },
+    {
+      "path": "local/256/apps/witnessops-ai-cli.png",
+      "sha256": "2ca32f8ef0a162c25b28c53b2cfcbfbe852d8089088ef5c0f6f9863af77ca1e5"
+    },
+    {
+      "path": "local/16/apps/witnessops-blackbox.png",
+      "sha256": "cbe469bba05df2a78b422cd2ba4ac0b783bb294e93a46f09404090bcb65b6aea"
+    },
+    {
+      "path": "local/24/apps/witnessops-blackbox.png",
+      "sha256": "d683f000483aa253ca68c1cac143055e79b7301d420b1a82a430b26a060ef626"
+    },
+    {
+      "path": "local/32/apps/witnessops-blackbox.png",
+      "sha256": "9962e807c00463ab4e2de0f371d742a01693e0d191208a8c45ab8770517b8f7f"
+    },
+    {
+      "path": "local/48/apps/witnessops-blackbox.png",
+      "sha256": "859b0bb85bfdeab46233ae60cf5edab6e7bc57b2d75ab4f1ff54fdf670b04dcf"
+    },
+    {
+      "path": "local/64/apps/witnessops-blackbox.png",
+      "sha256": "c98eaaea63a7bd6a6c52efab79897068f801a21aade5e293fbc75796c6744b09"
+    },
+    {
+      "path": "local/128/apps/witnessops-blackbox.png",
+      "sha256": "3f72f764fb21f358a827fb26d486d68b55e355759b0154d3d421324adfa8d8d7"
+    },
+    {
+      "path": "local/256/apps/witnessops-blackbox.png",
+      "sha256": "b291358a3a306ec78ab410cd47a91d494ee26a0e2ff45debc527ab8881a212c0"
+    },
+    {
+      "path": "local/16/apps/blackbox-browser.png",
+      "sha256": "d166ee72397d8b789ffc0bb405fb234b1eff7ecd03e62af2bc12557121ba3257"
+    },
+    {
+      "path": "local/24/apps/blackbox-browser.png",
+      "sha256": "5899114158c8eea9de7d856467c9351e1c4d4e2384fa9680ce7c8eacb210ad87"
+    },
+    {
+      "path": "local/32/apps/blackbox-browser.png",
+      "sha256": "ad233acd0947865c8a9ac1a1ab9f095016954bfa953d8114a92ba1d19eb1d65f"
+    },
+    {
+      "path": "local/48/apps/blackbox-browser.png",
+      "sha256": "745cc09cac5310a441c4841616d927b2d0a3d824ad5218071920aab0bdf8b90c"
+    },
+    {
+      "path": "local/64/apps/blackbox-browser.png",
+      "sha256": "1694110c4a1a07687b0af66f580abb4c1a156ea10f7bbe127863382b96d764af"
+    },
+    {
+      "path": "local/128/apps/blackbox-browser.png",
+      "sha256": "4846c5adacf578f2374e796911573e5233cda9d8a5b692453e963682ecb83466"
+    },
+    {
+      "path": "local/256/apps/blackbox-browser.png",
+      "sha256": "1c1ac2f70ec4b06740af881ef4cd89fe4bfe36920855dede69c4db2b506ea41c"
+    },
+    {
+      "path": "local/16/apps/witnessops-credential-import.png",
+      "sha256": "59d5719b485af82fada259660522d882a440fe0ca43ab7591da8624912d7db25"
+    },
+    {
+      "path": "local/24/apps/witnessops-credential-import.png",
+      "sha256": "bda89dc76b1c5514038ab8568ff022befa1b07a0a989500dc8ee97310ec9d765"
+    },
+    {
+      "path": "local/32/apps/witnessops-credential-import.png",
+      "sha256": "680aff74b3f2b88be923a4da73ff7df2616bf433427d50a28bffeb63c256bf72"
+    },
+    {
+      "path": "local/48/apps/witnessops-credential-import.png",
+      "sha256": "bcd60ee91c59b7da3196b2241d1045a17ad7c2ffe5463fdcd0440117ec3be64c"
+    },
+    {
+      "path": "local/64/apps/witnessops-credential-import.png",
+      "sha256": "0f730f30a2c2f4243a37511d771c740295552637249e40db6ffeaddf74ae0afa"
+    },
+    {
+      "path": "local/128/apps/witnessops-credential-import.png",
+      "sha256": "b382ab92f2c9285184bceb30bab69213e013f02b1bdce99febefdf7f2a96e353"
+    },
+    {
+      "path": "local/256/apps/witnessops-credential-import.png",
+      "sha256": "8ffa24bd75af25de613ac4d381165873b6729bdefb116a5f8faf1a04c5d966d9"
+    },
+    {
+      "path": "local/16/apps/com.vscodium.codium.png",
+      "sha256": "24f78bc8f3a24840352641f5738596098384a3738ccee254b462d628cd3340f3"
+    },
+    {
+      "path": "local/24/apps/com.vscodium.codium.png",
+      "sha256": "4d2c1177ef29def2cca247d98ffc1de6a404634cc2b3168bb9ab302848c41f4d"
+    },
+    {
+      "path": "local/32/apps/com.vscodium.codium.png",
+      "sha256": "6669740076e1525e0d51d70ca543c18113637e081d2f7187bdbf92b8537ff707"
+    },
+    {
+      "path": "local/48/apps/com.vscodium.codium.png",
+      "sha256": "6a3f58aede60db0289628572f76495e572417ba7acda1cfd4d540aa14165b2ab"
+    },
+    {
+      "path": "local/64/apps/com.vscodium.codium.png",
+      "sha256": "cce593ff8ff505b1fba4d5b9d3360bbed3275a64955dbd0cbfadb998676df490"
+    },
+    {
+      "path": "local/128/apps/com.vscodium.codium.png",
+      "sha256": "a652b8118924bcb021ae3e696636d6984446a44f457916322703cd159af0fa87"
+    },
+    {
+      "path": "local/256/apps/com.vscodium.codium.png",
+      "sha256": "72322ff59683c49408666865c87f8b9158a48af444a7c8f63397e289a994f938"
+    },
+    {
+      "path": "local/16/apps/spectacle.png",
+      "sha256": "b4839bb14a139938b0cb819c0e84016b2708f3d8bab3100f9d8f0352c368b0c4"
+    },
+    {
+      "path": "local/24/apps/spectacle.png",
+      "sha256": "f88a3b62ee3498e6766827ff2dfb5261dadf9d8762ee8894ada4054c6390e2d6"
+    },
+    {
+      "path": "local/32/apps/spectacle.png",
+      "sha256": "cb056846196078f8916d685b9da6f0eed130a333c5d63a23f370752740a9b962"
+    },
+    {
+      "path": "local/48/apps/spectacle.png",
+      "sha256": "4dbc3ec42c53791fc9346b68052162b5f4c0d4f933e3c46744931834a3dca629"
+    },
+    {
+      "path": "local/64/apps/spectacle.png",
+      "sha256": "d25e44e166507e63b7404a005b86873330b9e1b5cbf72a16f59e4708b409594f"
+    },
+    {
+      "path": "local/128/apps/spectacle.png",
+      "sha256": "bf991b26bcc58f722d9e7eb22b0ec56b7430f8a055f68d2bf0629d723aafbdda"
+    },
+    {
+      "path": "local/256/apps/spectacle.png",
+      "sha256": "335d93527a41c0d817577b76e97124c8f24a67267316f0dfbcb2ff3d868625be"
+    },
+    {
+      "path": "local/16/apps/preferences-system.png",
+      "sha256": "4480839cea3bbc658c690f9f5fdd8ab2a350bf1549c508ace702391afc5c6866"
+    },
+    {
+      "path": "local/16/apps/systemsettings.png",
+      "sha256": "4480839cea3bbc658c690f9f5fdd8ab2a350bf1549c508ace702391afc5c6866"
+    },
+    {
+      "path": "local/16/apps/org.kde.systemsettings.png",
+      "sha256": "4480839cea3bbc658c690f9f5fdd8ab2a350bf1549c508ace702391afc5c6866"
+    },
+    {
+      "path": "local/24/apps/preferences-system.png",
+      "sha256": "ef457c501b3292ff2f4094ff021e997a6f46b45626a9092d25eb20598b6c4b52"
+    },
+    {
+      "path": "local/24/apps/systemsettings.png",
+      "sha256": "ef457c501b3292ff2f4094ff021e997a6f46b45626a9092d25eb20598b6c4b52"
+    },
+    {
+      "path": "local/24/apps/org.kde.systemsettings.png",
+      "sha256": "ef457c501b3292ff2f4094ff021e997a6f46b45626a9092d25eb20598b6c4b52"
+    },
+    {
+      "path": "local/32/apps/preferences-system.png",
+      "sha256": "451fd2e222ef8dfc688eb4298ca828223f6e8ed9c372a671d6ad933e3d5bc28b"
+    },
+    {
+      "path": "local/32/apps/systemsettings.png",
+      "sha256": "451fd2e222ef8dfc688eb4298ca828223f6e8ed9c372a671d6ad933e3d5bc28b"
+    },
+    {
+      "path": "local/32/apps/org.kde.systemsettings.png",
+      "sha256": "451fd2e222ef8dfc688eb4298ca828223f6e8ed9c372a671d6ad933e3d5bc28b"
+    },
+    {
+      "path": "local/48/apps/preferences-system.png",
+      "sha256": "11b23056fe62a4023ea3511d59b1122c8e85916e4e8b2b738ee1f1ca391f58e6"
+    },
+    {
+      "path": "local/48/apps/systemsettings.png",
+      "sha256": "11b23056fe62a4023ea3511d59b1122c8e85916e4e8b2b738ee1f1ca391f58e6"
+    },
+    {
+      "path": "local/48/apps/org.kde.systemsettings.png",
+      "sha256": "11b23056fe62a4023ea3511d59b1122c8e85916e4e8b2b738ee1f1ca391f58e6"
+    },
+    {
+      "path": "local/64/apps/preferences-system.png",
+      "sha256": "0f80ae282935dc8320d549e952cce71dacf3c0e8b6fba36dbd1eb6bfddecf57c"
+    },
+    {
+      "path": "local/64/apps/systemsettings.png",
+      "sha256": "0f80ae282935dc8320d549e952cce71dacf3c0e8b6fba36dbd1eb6bfddecf57c"
+    },
+    {
+      "path": "local/64/apps/org.kde.systemsettings.png",
+      "sha256": "0f80ae282935dc8320d549e952cce71dacf3c0e8b6fba36dbd1eb6bfddecf57c"
+    },
+    {
+      "path": "local/128/apps/preferences-system.png",
+      "sha256": "5562feec82b07e9f2beab6d043ee4082df982553b2664af9f7393e7144b0670e"
+    },
+    {
+      "path": "local/128/apps/systemsettings.png",
+      "sha256": "5562feec82b07e9f2beab6d043ee4082df982553b2664af9f7393e7144b0670e"
+    },
+    {
+      "path": "local/128/apps/org.kde.systemsettings.png",
+      "sha256": "5562feec82b07e9f2beab6d043ee4082df982553b2664af9f7393e7144b0670e"
+    },
+    {
+      "path": "local/256/apps/preferences-system.png",
+      "sha256": "ea3ffaa2a19dd14c488fa665eded9fcde4ccb21a1b015412fe61f5cfd5f503b9"
+    },
+    {
+      "path": "local/256/apps/systemsettings.png",
+      "sha256": "ea3ffaa2a19dd14c488fa665eded9fcde4ccb21a1b015412fe61f5cfd5f503b9"
+    },
+    {
+      "path": "local/256/apps/org.kde.systemsettings.png",
+      "sha256": "ea3ffaa2a19dd14c488fa665eded9fcde4ccb21a1b015412fe61f5cfd5f503b9"
+    }
+  ],
+  "constraints": [
+    "Distinct application identities",
+    "No macOS buttons",
+    "Transparent outside authored silhouettes and through Settings center",
+    "Same authored identity at every declared app size",
+    "Native vendor marks and semantic colors preserved",
+    "Earlier WitnessOps sets excluded"
+  ]
+}

@@ -1,0 +1,28 @@
+name: Icon set validation
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    env:
+      QT_QPA_PLATFORM: offscreen
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Install rendering dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends python3-pyqt5 python3-pyqt5.qtsvg python3-pil
+      - name: Run fixture and package tests
+        run: /usr/bin/python3 -m unittest discover -s tests -v
+      - name: Build and verify standalone archive
+        run: |
+          /usr/bin/python3 pack_icon_set.py
+          /usr/bin/python3 pack_icon_set.py --verify dist/WitnessOps-Icon-Set-v1.0.0.tar.gz
