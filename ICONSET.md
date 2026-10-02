@@ -41,7 +41,16 @@ every desktop/version has not been tested.
 
 ## Install and verify
 
-From an extracted archive, check its complete checksum manifest first:
+Before extracting or executing an archive, verify it with `pack_icon_set.py`
+from the trusted checkout:
+
+```sh
+python3 /path/to/trusted/witnessops-theme/pack_icon_set.py --verify /path/to/archive.tar.gz
+```
+
+The verifier must come from the trusted checkout. An archive's own verifier and
+checksum manifest cannot establish its authenticity. After that verification,
+check the extracted files' complete checksum manifest:
 
 ```sh
 sha256sum -c SHA256SUMS
@@ -191,6 +200,14 @@ approved bytes. A
 self-consistent checksum manifest alone is insufficient. Third-party notices
 come directly from the required `THIRD_PARTY_NOTICES.md` source file. The archive
 `README.md` is this document.
+
+Every shipped Python file, including imported modules, tests and optional tools,
+is bound to trusted SHA256 digests. Both collection and archive verification
+reject changed code even when the archive's checksums are rewritten. Static pins
+must be reviewed alongside source changes. The packer captures its own digest
+from the trusted module file when it loads; the archive and alternate source
+roots cannot supply that reference. Optional tools may be absent, but any
+included tool must match its pin.
 
 Archive verification hashes input and file bodies in chunks of at most 64 KiB.
 It permits at most 60,000 entries, 120,000 headers (including local PAX path

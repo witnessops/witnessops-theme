@@ -52,6 +52,36 @@ V1_NATIVE_MANIFEST_DIGESTS = {
         "5237b2dfed38a15ae0de912709b0be155eea15beb79b8aa188cad746984d5d0e",
 }
 V1_ARTWORK_MANIFEST_DIGEST = "7a0c9f3e3148910dc03b01d8976d763f70b39c7743ad133f888736a6ade9c3d3"
+# All shipped Python is executable, including imports, tests and optional tools.
+# Review these pins together with any deliberate source changes. The verifier
+# anchors its own bytes in its trusted module, avoiding a recursive self-hash.
+V1_CODE_DIGESTS = {
+    "build_icon_set.py":
+        "48fcdb694f4fa76372e66eff38dff2ce71dc35da8e9f5b17368c1a1642686066",
+    "icon_set_style.py":
+        "fb15e514f17e3cc8147f53c711c916ea4b1b2bab33806d973281be15682a1239",
+    "install_icon_set.py":
+        "9b67d0097f198efc585ad42c3b4539d9826dcb1879f7451670a569af4b89776c",
+    "tests/test_icon_inventory.py":
+        "326d1e025fb45afcd92e64e66edc0a530f9cccb8d3d0c423d838bb71de0029bd",
+    "tests/test_icon_set_build.py":
+        "3dc3bb49afef479daf62b5ea5ad0adb3dc32febfc1763988ea95f3b388619e03",
+    "tests/test_icon_set_install.py":
+        "a09af510c7076c08ba035f74e15979e6d572ac76fd5e263f8f24a6c080897352",
+    "tests/test_icon_set_package.py":
+        "d601677506c926f55cc4b2e97e8837aed5f5e9ff127a6a96927bbfe820806806",
+    "tests/test_icon_set_style.py":
+        "1aacb9f0e79b0e21d0fbf3a7392d43a7e9da2e4851eb041e7edccf3e6f370df7",
+    "tests/test_launcher_icon_overrides.py":
+        "f4c499eec0a2d809d10bb85b677f20fa4e8e800ccb3c18dbb52ec3628fdbf3c9",
+    "tools/inventory_icons.py":
+        "8de2f1561d00a51259d06e35788ae102e0d247bcdca217a32d8920cb4060a49d",
+    "tools/launcher_icon_overrides.py":
+        "38443abca7cf277426b88afbce1d617cb9bcac5b331a78c0ee377e0184b6a74d",
+    "tools/preview_icon_set.py":
+        "29394a14b473535e6b2f6228ba2676a2317bd20076cd8c2a8fb3b7818f31e25b",
+}
+V1_PACKER_DIGEST = hashlib.sha256(Path(__file__).resolve().read_bytes()).hexdigest()
 # Fixed v1 budgets include generous margins over the complete committed package.
 READ_CHUNK_BYTES = 64 * 1024
 MAX_COMPRESSED_BYTES = 128 * 1024 * 1024
@@ -276,8 +306,19 @@ def require_payload(entries: dict[str, bytes | VerifiedFile]) -> None:
         raise ValueError("Missing mandatory public payload: " + sorted(missing)[0])
 
 
+def validate_code_payload(entries: dict[str, bytes | VerifiedFile]) -> None:
+    declared = {name for name in FILE_ALLOWLIST + OPTIONAL_FILES if name.endswith(".py")}
+    pins = {**V1_CODE_DIGESTS, "pack_icon_set.py": V1_PACKER_DIGEST}
+    if declared != pins.keys():
+        raise ValueError("Unpinned public Python inventory")
+    for name, expected_digest in pins.items():
+        if name in entries and digest(entries[name]) != expected_digest:
+            raise ValueError("Frozen v1 code inventory differs: " + name)
+
+
 def validate_payload(entries: dict[str, bytes | VerifiedFile], directories: set[str]) -> None:
     require_payload(entries)
+    validate_code_payload(entries)
     index_name = THEME_DIRECTORY + "/index.theme"
     if index_name not in entries:
         raise ValueError("Missing public theme index")

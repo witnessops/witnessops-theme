@@ -37,6 +37,21 @@ class IconSetPackageTest(unittest.TestCase):
             path = self.root / name
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_bytes(b"\x89PNG\r\n\x1a\nfixture" if name.endswith(".png") else b"allowlisted source\n")
+        # The packer is trusted independently of the root being packaged. Other
+        # miniature code fixtures are pinned once before adversarial mutations.
+        (self.root / "pack_icon_set.py").write_bytes(Path(package.__file__).read_bytes())
+        for name in package.OPTIONAL_FILES:
+            if name.endswith(".py"):
+                path = self.root / name
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_bytes(b"# optional public Python fixture\n")
+        self.release_code_pins = dict(package.V1_CODE_DIGESTS)
+        code_pins = patch.dict(package.V1_CODE_DIGESTS, {
+            name: package.digest((self.root / name).read_bytes())
+            for name in self.release_code_pins
+        })
+        code_pins.start()
+        self.addCleanup(code_pins.stop)
         self.theme = self.root / package.THEME_DIRECTORY
         local_directories = [f"local/{size}/apps" for size in (16, 24, 32, 48, 64, 128, 256)]
         for directory in ("apps/48", "apps/16@2x", *local_directories):
@@ -662,9 +677,81 @@ class IconSetPackageTest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "Frozen v1 artwork inventory differs"):
             package.collect(self.root)
 
+    def test_frozen_code_pins_cover_all_published_python_and_match_committed_sources(self):
+        declared = {name for name in package.FILE_ALLOWLIST + package.OPTIONAL_FILES
+                    if name.endswith(".py")}
+        self.assertEqual(declared, set(self.release_code_pins) | {"pack_icon_set.py"})
+        for name, expected in self.release_code_pins.items():
+            with self.subTest(name=name):
+                self.assertEqual(package.digest((package.ROOT / name).read_bytes()), expected)
+        self.assertEqual(package.digest(Path(package.__file__).read_bytes()),
+                         package.V1_PACKER_DIGEST)
+
+    def test_verifier_rejects_every_self_manifested_public_python_substitution(self):
+        original, directories = package.collect(self.root)
+        published_python = sorted(name for name in original if name.endswith(".py"))
+        # Include non-executable imported modules and optional tests/tools, not only
+        # the entry points currently listed in EXECUTABLES.
+        self.assertIn("install_icon_set.py", published_python)
+        self.assertIn("tools/launcher_icon_overrides.py", published_python)
+        self.assertIn("icon_set_style.py", published_python)
+        self.assertIn("tests/test_icon_set_package.py", published_python)
+        self.assertIn("tools/preview_icon_set.py", published_python)
+        for name in published_python:
+            with self.subTest(name=name):
+                entries = dict(original)
+                entries[name] += b"\n# attacker replacement with regenerated checksums\n"
+                archive = self.write_self_manifested_archive(entries, directories)
+                with self.assertRaisesRegex(ValueError, "Frozen v1 code inventory differs: " + name):
+                    package.verify_archive(archive)
+
+    def test_collect_rejects_every_public_python_substitution(self):
+        original, _ = package.collect(self.root)
+        for name in sorted(name for name in original if name.endswith(".py")):
+            with self.subTest(name=name):
+                source = self.root / name
+                source.write_bytes(original[name] + b"\n# replaced source code\n")
+                try:
+                    with self.assertRaisesRegex(ValueError, "Frozen v1 code inventory differs: " + name):
+                        package.collect(self.root)
+                finally:
+                    source.write_bytes(original[name])
+
+    def test_packer_pin_does_not_follow_the_root_being_verified(self):
+        entries, directories = package.collect(self.root)
+        name = "pack_icon_set.py"
+        entries[name] += b"\n# altered verifier and trust constants\n"
+        (self.root / name).write_bytes(entries[name])
+        archive = self.write_self_manifested_archive(entries, directories)
+        with patch.object(package, "ROOT", self.root):
+            with self.assertRaisesRegex(ValueError, "Frozen v1 code inventory differs: " + name):
+                package.verify_archive(archive)
+            with self.assertRaisesRegex(ValueError, "Frozen v1 code inventory differs: " + name):
+                package.collect(self.root)
+
+    def test_new_public_python_requires_an_explicit_trusted_pin(self):
+        entries, directories = package.collect(self.root)
+        name = "tools/unpinned.py"
+        entries[name] = b"# newly allowlisted Python without a trusted pin\n"
+        (self.root / name).write_bytes(entries[name])
+        archive = self.write_self_manifested_archive(entries, directories)
+        with patch.object(package, "OPTIONAL_FILES", package.OPTIONAL_FILES + (name,)):
+            with self.assertRaisesRegex(ValueError, "Unpinned public Python inventory"):
+                package.verify_archive(archive)
+            with self.assertRaisesRegex(ValueError, "Unpinned public Python inventory"):
+                package.collect(self.root)
+
+    def test_optional_pinned_python_may_be_omitted(self):
+        for name in package.OPTIONAL_FILES:
+            if name.endswith(".py"):
+                (self.root / name).unlink()
+        entries, directories = package.collect(self.root)
+        self.assertFalse(any(name in entries for name in package.OPTIONAL_FILES if name.endswith(".py")))
+        archive = self.write_self_manifested_archive(entries, directories)
+        self.assertEqual(package.verify_archive(archive)["files"], len(entries))
+
     def test_optional_preview_tool_is_allowlisted(self):
         source = self.root / "tools/preview_icon_set.py"
-        source.write_text("#!/usr/bin/env python3\n# selected-asset diagnostics\n")
         entries, _ = package.collect(self.root)
         self.assertEqual(entries["tools/preview_icon_set.py"], source.read_bytes())
 
