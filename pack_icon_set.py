@@ -51,6 +51,23 @@ V1_NATIVE_MANIFEST_DIGESTS = {
     "assets/icon-set-v1.0/folder-aliases.json":
         "5237b2dfed38a15ae0de912709b0be155eea15beb79b8aa188cad746984d5d0e",
 }
+V1_ARTWORK_MANIFEST_DIGEST = "7a0c9f3e3148910dc03b01d8976d763f70b39c7743ad133f888736a6ade9c3d3"
+# Fixed v1 budgets include generous margins over the complete committed package.
+READ_CHUNK_BYTES = 64 * 1024
+MAX_COMPRESSED_BYTES = 128 * 1024 * 1024
+MAX_DECOMPRESSED_BYTES = 256 * 1024 * 1024
+MAX_PAYLOAD_BYTES = 128 * 1024 * 1024
+MAX_MEMBER_BYTES = 32 * 1024 * 1024
+MAX_ARCHIVE_MEMBERS = 60_000
+MAX_ARCHIVE_HEADERS = 120_000  # Includes the local PAX headers used for long paths.
+MAX_PAX_HEADER_BYTES = 8 * 1024
+METADATA_LIMITS = {
+    "assets/icon-set-v1.0/PROVENANCE.json": MAX_MEMBER_BYTES,
+    "assets/icon-set-v1.0/artwork.json": 1024 * 1024,
+    "assets/icon-set-v1.0/folder-aliases.json": 1024 * 1024,
+    THEME_DIRECTORY + "/index.theme": 256 * 1024,
+    "SHA256SUMS": 16 * 1024 * 1024,
+}
 EXECUTABLES = {"pack_icon_set.py", "build_icon_set.py", "install_icon_set.py",
                "tools/inventory_icons.py", "tools/launcher_icon_overrides.py", "tools/preview_icon_set.py"}
 AUTHORED = {
@@ -80,6 +97,79 @@ class VerifiedFile:
     """Retain integrity evidence without another copy of archive artwork bytes."""
     sha256: str
     header: bytes
+
+
+class LimitedReader:
+    """Bound actual bytes (including padding/trailers) and hash compressed input."""
+    def __init__(self, source, limit: int):
+        self.source = source
+        self.limit = limit
+        self.count = 0
+        self.sha256 = hashlib.sha256()
+
+    def read(self, size: int = -1) -> bytes:
+        if size < 0:
+            raise ValueError("Unbounded archive reads are excluded")
+        data = self.source.read(min(size, READ_CHUNK_BYTES, self.limit - self.count + 1))
+        self.count += len(data)
+        if self.count > self.limit:
+            raise ValueError("Archive byte budget exceeded")
+        self.sha256.update(data)
+        return data
+
+
+class BoundedTarInfo(tarfile.TarInfo):
+    """Guard extension allocations before tarfile processes or yields a header."""
+    @classmethod
+    def frombuf(cls, buf, encoding, errors):
+        try:
+            return super().frombuf(buf, encoding, errors)
+        except (tarfile.InvalidHeaderError, tarfile.TruncatedHeaderError) as error:
+            raise ValueError("Malformed archive header") from error
+
+    @classmethod
+    def _frombuf(cls, *args, **kwargs):
+        # Updated Python releases call this internal constructor directly.
+        try:
+            return super()._frombuf(*args, **kwargs)
+        except (tarfile.InvalidHeaderError, tarfile.TruncatedHeaderError) as error:
+            raise ValueError("Malformed archive header") from error
+
+    def _proc_member(self, archive):
+        archive._verification_headers = getattr(archive, "_verification_headers", 0) + 1
+        if archive._verification_headers > MAX_ARCHIVE_HEADERS:
+            raise ValueError("Archive header count budget exceeded")
+        if self.size < 0 or self.size > MAX_MEMBER_BYTES:
+            raise ValueError("Archive member size budget exceeded")
+        if self.type == tarfile.XHDTYPE:
+            if self.size > MAX_PAX_HEADER_BYTES:
+                raise ValueError("Archive PAX header size budget exceeded")
+            if getattr(archive, "_verification_pax_active", False):
+                raise ValueError("Chained archive PAX headers are excluded")
+            archive._verification_pax_active = True
+            try:
+                result = super()._proc_member(archive)
+                if set(result.pax_headers) - {"path"}:
+                    raise ValueError("Archive PAX fields other than path are excluded")
+            finally:
+                archive._verification_pax_active = False
+        elif self.type in (tarfile.REGTYPE, tarfile.AREGTYPE, tarfile.DIRTYPE):
+            result = super()._proc_member(archive)
+        else:
+            raise ValueError("Archive contains an unsupported header type")
+        if result.size < 0 or result.size > MAX_MEMBER_BYTES or (result.isdir() and result.size):
+            raise ValueError("Archive member size budget exceeded")
+        return result
+
+    # PAX sparse handlers can allocate/read before the outer iterator sees a member.
+    def _proc_gnusparse_00(self, *args):
+        raise ValueError("Sparse archive extensions are excluded")
+
+    def _proc_gnusparse_01(self, *args):
+        raise ValueError("Sparse archive extensions are excluded")
+
+    def _proc_gnusparse_10(self, *args):
+        raise ValueError("Sparse archive extensions are excluded")
 
 
 def digest(data: bytes | VerifiedFile) -> str:
@@ -178,12 +268,16 @@ def collect(root: Path = ROOT) -> tuple[dict[str, bytes], set[str]]:
     return entries, directories
 
 
-def validate_payload(entries: dict[str, bytes | VerifiedFile], directories: set[str]) -> None:
+def require_payload(entries: dict[str, bytes | VerifiedFile]) -> None:
     required = set(FILE_ALLOWLIST) | {THEME_DIRECTORY + "/" + name for name in
                                      ("index.theme", "COPYRIGHT-BREEZE", "COPYING-BREEZE-ICONS")}
     missing = required - entries.keys()
     if missing:
         raise ValueError("Missing mandatory public payload: " + sorted(missing)[0])
+
+
+def validate_payload(entries: dict[str, bytes | VerifiedFile], directories: set[str]) -> None:
+    require_payload(entries)
     index_name = THEME_DIRECTORY + "/index.theme"
     if index_name not in entries:
         raise ValueError("Missing public theme index")
@@ -336,6 +430,8 @@ def validate_artwork(entries: dict[str, bytes | VerifiedFile]) -> None:
         for size in SIZES:
             if len({digest(entries[THEME_DIRECTORY + f"/local/{size}/apps/{key}.png"]) for key in keys}) != 1:
                 raise ValueError("Rendered artwork aliases differ at size " + str(size))
+    if digest(entries["assets/icon-set-v1.0/artwork.json"]) != V1_ARTWORK_MANIFEST_DIGEST:
+        raise ValueError("Frozen v1 artwork inventory differs")
 
 
 def verify_archive(path: Path) -> dict:
@@ -345,35 +441,71 @@ def verify_archive(path: Path) -> dict:
     seen = set()
     directories = set()
     entries = {}
-    metadata = {"assets/icon-set-v1.0/PROVENANCE.json", "assets/icon-set-v1.0/artwork.json",
-                "assets/icon-set-v1.0/folder-aliases.json", THEME_DIRECTORY + "/index.theme"}
-    with tarfile.open(path, "r:gz") as archive:
-        for member in archive:
-            name = safe_relative(member.name).as_posix()
-            if name in seen or not (name == ARCHIVE_ROOT or name.startswith(ARCHIVE_ROOT + "/")):
-                raise ValueError("Unexpected or duplicate archive member: " + name)
-            seen.add(name)
-            if member.isdir():
-                relative = "" if name == ARCHIVE_ROOT else name.removeprefix(ARCHIVE_ROOT + "/")
-                if not allowed_directory(relative):
-                    raise ValueError("Archive directory is outside the publication allowlist: " + relative)
-                directories.add(relative)
-                continue
-            if not member.isfile() or member.issym() or member.islnk():
-                raise ValueError("Archive contains a non-regular asset: " + name)
-            relative = name.removeprefix(ARCHIVE_ROOT + "/")
-            if not allowed_member(relative):
-                raise ValueError("Archive asset is outside the publication allowlist: " + relative)
-            stream = archive.extractfile(member)
-            if stream is None:
-                raise ValueError("Unreadable archive asset: " + name)
-            data = stream.read()
-            if relative == "SHA256SUMS":
-                manifest = data.decode()
-            else:
-                checksums[relative] = digest(data)
-                entries[relative] = (data if relative in metadata else
-                                     VerifiedFile(checksums[relative], data[:33]))
+    total_payload = 0
+    with Path(path).open("rb") as raw:
+        if os.fstat(raw.fileno()).st_size > MAX_COMPRESSED_BYTES:
+            raise ValueError("Compressed archive size budget exceeded")
+        compressed = LimitedReader(raw, MAX_COMPRESSED_BYTES)
+        with gzip.GzipFile(fileobj=compressed, mode="rb") as gzip_stream:
+            decompressed = LimitedReader(gzip_stream, MAX_DECOMPRESSED_BYTES)
+            with tarfile.open(fileobj=decompressed, mode="r|", tarinfo=BoundedTarInfo) as archive:
+                for member in archive:
+                    if len(seen) >= MAX_ARCHIVE_MEMBERS:
+                        raise ValueError("Archive member count budget exceeded")
+                    name = safe_relative(member.name).as_posix()
+                    if name in seen or not (name == ARCHIVE_ROOT or name.startswith(ARCHIVE_ROOT + "/")):
+                        raise ValueError("Unexpected or duplicate archive member: " + name)
+                    seen.add(name)
+                    if member.isdir():
+                        relative = "" if name == ARCHIVE_ROOT else name.removeprefix(ARCHIVE_ROOT + "/")
+                        if not allowed_directory(relative):
+                            raise ValueError("Archive directory is outside the publication allowlist: " + relative)
+                        directories.add(relative)
+                        archive.members.clear()
+                        continue
+                    if not member.isfile() or member.issym() or member.islnk():
+                        raise ValueError("Archive contains a non-regular asset: " + name)
+                    relative = name.removeprefix(ARCHIVE_ROOT + "/")
+                    if not allowed_member(relative):
+                        raise ValueError("Archive asset is outside the publication allowlist: " + relative)
+                    limit = min(MAX_MEMBER_BYTES, METADATA_LIMITS.get(relative, MAX_MEMBER_BYTES))
+                    if member.size < 0 or member.size > limit:
+                        raise ValueError("Archive member size budget exceeded: " + relative)
+                    total_payload += member.size
+                    if total_payload > MAX_PAYLOAD_BYTES:
+                        raise ValueError("Archive payload byte budget exceeded")
+                    stream = archive.extractfile(member)
+                    if stream is None:
+                        raise ValueError("Unreadable archive asset: " + name)
+                    sha256 = hashlib.sha256()
+                    header = b""
+                    chunks = []
+                    remaining = member.size
+                    while remaining:
+                        chunk = stream.read(min(remaining, READ_CHUNK_BYTES))
+                        if not chunk:
+                            raise ValueError("Truncated archive asset: " + relative)
+                        remaining -= len(chunk)
+                        sha256.update(chunk)
+                        header += chunk[:33 - len(header)]
+                        if relative in METADATA_LIMITS:
+                            chunks.append(chunk)
+                    if relative == "SHA256SUMS":
+                        manifest = b"".join(chunks).decode()
+                    else:
+                        checksums[relative] = sha256.hexdigest()
+                        entries[relative] = (b"".join(chunks) if relative in METADATA_LIMITS else
+                                             VerifiedFile(checksums[relative], header))
+                    # Streaming extraction uses the TarInfo directly, without a growing cache.
+                    archive.members.clear()
+                # Include tar's buffered tail, enforce zero padding and reach gzip CRC/EOF.
+                while True:
+                    padding = archive.fileobj.read(READ_CHUNK_BYTES)
+                    if not padding:
+                        break
+                    if any(padding):
+                        raise ValueError("Nonzero archive data after tar end marker")
+        archive_digest = compressed.sha256.hexdigest()
     expected = {}
     for line in (manifest or "").splitlines():
         match = re.fullmatch(r"([0-9a-f]{64})  (.+)", line)
@@ -383,11 +515,16 @@ def verify_archive(path: Path) -> dict:
         expected[match[2]] = match[1]
     if not expected or expected != checksums:
         raise ValueError("Archive bytes differ from the complete internal checksum manifest")
+    require_payload(entries)
+    # Reject substituted native JSON before constructing its large object graph.
+    for name, expected_digest in V1_NATIVE_MANIFEST_DIGESTS.items():
+        if name in entries and digest(entries[name]) != expected_digest:
+            raise ValueError("Frozen v1 native inventory differs: " + name)
     validate_payload(entries, directories)
     if "README.md" not in entries or digest(entries["README.md"]) != digest(entries["ICONSET.md"]):
         raise ValueError("Archive README is missing or differs from the component guide")
     return {"files": len(checksums) + 1, "directories": len(directories),
-            "sha256": digest(Path(path).read_bytes())}
+            "sha256": archive_digest}
 
 
 def pack(output: Path, root: Path = ROOT) -> dict:

@@ -1,6 +1,8 @@
 """Standalone archive boundaries, integrity and repeatability checks."""
 
 from pathlib import Path
+import gzip
+import hashlib
 import io
 import json
 import struct
@@ -86,6 +88,11 @@ class IconSetPackageTest(unittest.TestCase):
                     (self.theme / relative).write_bytes(rendered_data)
                     artwork["rendered"].append({"path": relative, "sha256": package.digest(rendered_data)})
         self.artwork.write_text(json.dumps(artwork))
+        self.release_artwork_pin = package.V1_ARTWORK_MANIFEST_DIGEST
+        artwork_pin = patch.object(package, "V1_ARTWORK_MANIFEST_DIGEST",
+                                   package.digest(self.artwork.read_bytes()))
+        artwork_pin.start()
+        self.addCleanup(artwork_pin.stop)
         for name in (".local/private.svg", ".git/history", "packages/user-v1/old.svg", "README.md"):
             path = self.root / name
             path.parent.mkdir(parents=True, exist_ok=True)
@@ -487,7 +494,7 @@ class IconSetPackageTest(unittest.TestCase):
                 aliases["records"] = [record for record in aliases["records"] if record["path"] != relative]
                 entries[aliases_name] = json.dumps(aliases).encode()
                 archive = self.write_self_manifested_archive(entries, directories)
-                with self.assertRaisesRegex(ValueError, "Reserved folder alias"):
+                with self.assertRaisesRegex(ValueError, "Frozen v1 native inventory differs"):
                     package.verify_archive(archive)
 
     def test_published_alias_assets_require_the_folder_alias_manifest(self):
@@ -617,12 +624,296 @@ class IconSetPackageTest(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError, "Frozen v1 native inventory differs"):
                     package.verify_archive(archive)
 
+    def test_frozen_artwork_pin_matches_committed_inventory(self):
+        self.assertEqual(package.digest((package.ROOT / "assets/icon-set-v1.0/artwork.json").read_bytes()),
+                         self.release_artwork_pin)
+
+    def substitute_artwork(self, original, replace_sources, replace_rendered):
+        entries = dict(original)
+        metadata_name = "assets/icon-set-v1.0/artwork.json"
+        artwork = json.loads(entries[metadata_name])
+        if replace_sources:
+            for record in artwork["assets"]:
+                entries[record["path"]] = png(256, (15, 16, 17, 255))
+                record["sha256"] = package.digest(entries[record["path"]])
+        if replace_rendered:
+            for record in artwork["rendered"]:
+                name = package.THEME_DIRECTORY + "/" + record["path"]
+                entries[name] = png(int(record["path"].split("/")[1]), (15, 16, 17, 255))
+                record["sha256"] = package.digest(entries[name])
+        entries[metadata_name] = json.dumps(artwork).encode()
+        return entries
+
+    def test_verifier_rejects_self_consistent_substituted_artwork(self):
+        original, directories = package.collect(self.root)
+        for replace_sources, replace_rendered in ((True, False), (False, True), (True, True)):
+            with self.subTest(sources=replace_sources, rendered=replace_rendered):
+                entries = self.substitute_artwork(original, replace_sources, replace_rendered)
+                archive = self.write_self_manifested_archive(entries, directories)
+                with self.assertRaisesRegex(ValueError, "Frozen v1 artwork inventory differs"):
+                    package.verify_archive(archive)
+
+    def test_collect_rejects_self_consistent_substituted_artwork(self):
+        original, _ = package.collect(self.root)
+        entries = self.substitute_artwork(original, True, True)
+        for name, data in entries.items():
+            if name == "assets/icon-set-v1.0/artwork.json" or name.endswith(".png"):
+                (self.root / name).write_bytes(data)
+        with self.assertRaisesRegex(ValueError, "Frozen v1 artwork inventory differs"):
+            package.collect(self.root)
+
     def test_optional_preview_tool_is_allowlisted(self):
         source = self.root / "tools/preview_icon_set.py"
         source.write_text("#!/usr/bin/env python3\n# selected-asset diagnostics\n")
         entries, _ = package.collect(self.root)
         self.assertEqual(entries["tools/preview_icon_set.py"], source.read_bytes())
 
+
+class IconSetArchiveLimitsTest(unittest.TestCase):
+    """Adversarial tar headers stay small; no oversized fixture bodies exist."""
+
+    def setUp(self):
+        temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(temporary.cleanup)
+        self.root = Path(temporary.name)
+
+    def raw_header(self, relative="LICENSE", size=0, kind=tarfile.REGTYPE):
+        info = tarfile.TarInfo(package.ARCHIVE_ROOT + "/" + relative)
+        info.size = size
+        info.type = kind
+        info.linkname = "unused-target" if kind in (tarfile.SYMTYPE, tarfile.LNKTYPE) else ""
+        return info.tobuf(format=tarfile.USTAR_FORMAT)
+
+    def padded(self, data):
+        return data + b"\0" * (-len(data) % tarfile.BLOCKSIZE)
+
+    def pax(self, fields, declared_size=None):
+        records = []
+        for key, value in fields.items():
+            suffix = f" {key}={value}\n".encode()
+            length = len(suffix) + 1
+            while length != len(str(length)) + len(suffix):
+                length = len(str(length)) + len(suffix)
+            records.append(str(length).encode() + suffix)
+        body = b"".join(records)
+        size = len(body) if declared_size is None else declared_size
+        return self.raw_header("pax", size, tarfile.XHDTYPE) + self.padded(body)
+
+    def archive(self, raw):
+        path = self.root / "adversarial.tar.gz"
+        path.write_bytes(gzip.compress(raw + b"\0" * 1024, mtime=0))
+        return path
+
+    def assert_before_extract(self, archive, reason):
+        with patch.object(tarfile.TarFile, "extractfile", side_effect=AssertionError("body extraction attempted")):
+            with self.assertRaisesRegex(ValueError, reason):
+                package.verify_archive(archive)
+
+    def test_oversized_regular_header_is_refused_before_extracting_body(self):
+        archive = self.archive(self.raw_header(size=package.MAX_MEMBER_BYTES + 1))
+        self.assert_before_extract(archive, "member size budget exceeded")
+
+    def test_each_metadata_header_obeys_its_limit_before_extracting_body(self):
+        for relative, limit in package.METADATA_LIMITS.items():
+            with self.subTest(relative=relative):
+                archive = self.archive(self.raw_header(relative, limit + 1))
+                self.assert_before_extract(archive, "member size budget exceeded")
+
+    def test_oversized_pax_header_is_refused_before_parser_reads_extension_body(self):
+        archive = self.archive(self.raw_header("pax", package.MAX_PAX_HEADER_BYTES + 1, tarfile.XHDTYPE))
+        with patch.object(tarfile.TarInfo, "_proc_pax", side_effect=AssertionError("PAX body parser attempted")):
+            self.assert_before_extract(archive, "PAX header size budget exceeded")
+
+    def test_chained_path_pax_headers_are_refused_before_body_extraction(self):
+        path = package.ARCHIVE_ROOT + "/LICENSE"
+        archive = self.archive(self.pax({"path": path}) + self.pax({"path": path}) + self.raw_header())
+        self.assert_before_extract(archive, "Chained archive PAX headers")
+
+    def test_all_pax_sparse_variants_are_refused_before_sparse_body_parser(self):
+        variants = (
+            ("_proc_gnusparse_00", {"GNU.sparse.size": "999999999", "GNU.sparse.offset": "0", "GNU.sparse.numbytes": "1"}),
+            ("_proc_gnusparse_01", {"GNU.sparse.map": "0,999999999"}),
+            ("_proc_gnusparse_10", {"GNU.sparse.major": "1", "GNU.sparse.minor": "0"}),
+        )
+        for handler, fields in variants:
+            with self.subTest(handler=handler):
+                archive = self.archive(self.pax(fields) + self.raw_header(size=512))
+                with patch.object(tarfile.TarInfo, handler, side_effect=AssertionError("sparse map parser attempted")):
+                    self.assert_before_extract(archive, "Sparse archive extensions")
+
+    def test_non_path_pax_fields_cannot_change_member_semantics(self):
+        for fields in ({"size": "1"}, {"linkpath": "outside"}, {"comment": "unused"}):
+            with self.subTest(fields=fields):
+                archive = self.archive(self.pax(fields) + self.raw_header())
+                self.assert_before_extract(archive, "PAX fields other than path")
+
+    def test_unsupported_tar_types_and_directory_payload_are_refused_before_body(self):
+        for kind in (tarfile.XGLTYPE, tarfile.GNUTYPE_LONGNAME, tarfile.GNUTYPE_LONGLINK,
+                     tarfile.GNUTYPE_SPARSE, tarfile.SYMTYPE, tarfile.LNKTYPE, tarfile.FIFOTYPE):
+            with self.subTest(kind=kind):
+                archive = self.archive(self.raw_header(kind=kind))
+                self.assert_before_extract(archive, "unsupported header type")
+        archive = self.archive(self.raw_header(size=1, kind=tarfile.DIRTYPE))
+        self.assert_before_extract(archive, "member size budget exceeded")
+
+    def test_raw_header_budget_counts_local_pax_header_before_yielding_member(self):
+        path = package.ARCHIVE_ROOT + "/LICENSE"
+        archive = self.archive(self.pax({"path": path}) + self.raw_header())
+        with patch.object(package, "MAX_ARCHIVE_HEADERS", 1):
+            self.assert_before_extract(archive, "header count budget exceeded")
+
+    def test_member_budget_accumulates_before_extraction_of_excess_member(self):
+        archive = self.archive(self.raw_header() + self.raw_header("ICONSET.md"))
+        original_extract = tarfile.TarFile.extractfile
+        extracted = []
+
+        def record_extract(reader, member):
+            extracted.append(member.name)
+            return original_extract(reader, member)
+
+        with patch.object(package, "MAX_ARCHIVE_MEMBERS", 1), \
+                patch.object(tarfile.TarFile, "extractfile", new=record_extract):
+            with self.assertRaisesRegex(ValueError, "member count budget exceeded"):
+                package.verify_archive(archive)
+        self.assertEqual(extracted, [package.ARCHIVE_ROOT + "/LICENSE"])
+
+    def test_payload_budget_is_enforced_from_declared_size_before_extraction(self):
+        archive = self.archive(self.raw_header(size=17))
+        with patch.object(package, "MAX_PAYLOAD_BYTES", 16):
+            self.assert_before_extract(archive, "payload byte budget exceeded")
+
+    def test_payload_budget_accumulates_across_members(self):
+        archive = self.archive(self.raw_header(size=8) + self.padded(b"a" * 8)
+                               + self.raw_header("ICONSET.md", 9))
+        original_extract = tarfile.TarFile.extractfile
+        extracted = []
+
+        def record_extract(reader, member):
+            extracted.append(member.name)
+            return original_extract(reader, member)
+
+        with patch.object(package, "MAX_PAYLOAD_BYTES", 16), \
+                patch.object(tarfile.TarFile, "extractfile", new=record_extract):
+            with self.assertRaisesRegex(ValueError, "payload byte budget exceeded"):
+                package.verify_archive(archive)
+        self.assertEqual(extracted, [package.ARCHIVE_ROOT + "/LICENSE"])
+
+    def test_decompressed_budget_counts_actual_padding_and_trailing_data(self):
+        # Tar processing stops at its zero trailer, but verification must still
+        # bound and consume the rest of the gzip stream.
+        archive = self.archive(self.raw_header() + b"\0" * (24 * 1024))
+        with patch.object(package, "MAX_DECOMPRESSED_BYTES", 12 * 1024):
+            with self.assertRaisesRegex(ValueError, "Archive byte budget exceeded"):
+                package.verify_archive(archive)
+
+    def test_compressed_budget_is_checked_before_opening_gzip_parser(self):
+        archive = self.archive(self.raw_header())
+        with patch.object(package, "MAX_COMPRESSED_BYTES", archive.stat().st_size - 1), \
+                patch.object(gzip, "GzipFile", side_effect=AssertionError("gzip parser attempted")):
+            self.assert_before_extract(archive, "Compressed archive size budget exceeded")
+
+    def test_limited_reader_bounds_actual_source_requests_and_rejects_unbounded_reads(self):
+        class Source(io.BytesIO):
+            def read(self, size=-1):
+                requests.append(size)
+                return super().read(size)
+
+        requests = []
+        reader = package.LimitedReader(Source(b"x" * (2 * package.READ_CHUNK_BYTES)), package.READ_CHUNK_BYTES)
+        with self.assertRaisesRegex(ValueError, "Unbounded archive reads"):
+            reader.read()
+        self.assertEqual(requests, [])
+        self.assertEqual(len(reader.read(2 * package.READ_CHUNK_BYTES)), package.READ_CHUNK_BYTES)
+        with self.assertRaisesRegex(ValueError, "Archive byte budget exceeded"):
+            reader.read(package.READ_CHUNK_BYTES)
+        self.assertEqual(requests, [package.READ_CHUNK_BYTES, 1])
+
+    def valid_fixture_archive(self):
+        fixture = IconSetPackageTest()
+        fixture.setUp()
+        self.addCleanup(fixture.doCleanups)
+        archive = fixture.root / "valid-limits.tar.gz"
+        package.pack(archive, fixture.root)
+        return fixture, archive
+
+    def test_nonzero_concatenated_gzip_payload_is_refused_but_zero_padding_is_allowed(self):
+        _, archive = self.valid_fixture_archive()
+        original = archive.read_bytes()
+        archive.write_bytes(original + gzip.compress(b"\0" * 2048, mtime=0))
+        result = package.verify_archive(archive)
+        self.assertEqual(result["sha256"], hashlib.sha256(archive.read_bytes()).hexdigest())
+        hidden_tar = self.raw_header("private.txt", 6) + self.padded(b"hidden") + b"\0" * 1024
+        archive.write_bytes(original + gzip.compress(hidden_tar, mtime=0))
+        with self.assertRaises(ValueError):
+            package.verify_archive(archive)
+
+    def test_malformed_nonzero_header_before_tar_terminators_is_refused(self):
+        _, archive = self.valid_fixture_archive()
+        raw = gzip.decompress(archive.read_bytes())
+        with tarfile.open(archive, "r:gz") as reader:
+            end = max(member.offset_data + (member.size + 511) // 512 * 512
+                      for member in reader)
+        self.assertEqual(raw[end:end + 512], b"\0" * 512)
+        invalid_header = b"malformed-nonzero-header".ljust(512, b"!")
+        archive.write_bytes(gzip.compress(raw[:end] + invalid_header + raw[end:], mtime=0))
+        with self.assertRaises(ValueError):
+            package.verify_archive(archive)
+
+    def test_valid_archive_hashes_members_and_compressed_input_in_bounded_chunks(self):
+        fixture = IconSetPackageTest()
+        fixture.setUp()
+        self.addCleanup(fixture.doCleanups)
+        # Deterministic, poorly compressible SVG text forces several source
+        # and member reads without relying on a large or random fixture.
+        content = b"".join(hashlib.sha256(str(number).encode()).hexdigest().encode()
+                           for number in range(4096))
+        fixture.native_asset("apps/48/large.svg", b"<svg><desc>" + content + b"</desc></svg>")
+        archive = fixture.root / "bounded-valid.tar.gz"
+        package.pack(archive, fixture.root)
+        expected = hashlib.sha256(archive.read_bytes()).hexdigest()
+        self.assertGreater(archive.stat().st_size, package.READ_CHUNK_BYTES)
+        member_requests, archive_requests = [], []
+        original_member_read = tarfile.ExFileObject.read
+        original_open = Path.open
+
+        def bounded_member_read(stream, size=-1):
+            self.assertGreaterEqual(size, 0)
+            self.assertLessEqual(size, package.READ_CHUNK_BYTES)
+            member_requests.append(size)
+            return original_member_read(stream, size)
+
+        class RawReadSpy:
+            def __init__(self, stream):
+                self.stream = stream
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *args):
+                return self.stream.__exit__(*args)
+
+            def fileno(self):
+                return self.stream.fileno()
+
+            def read(self, size=-1):
+                self_outer.assertGreaterEqual(size, 0)
+                self_outer.assertLessEqual(size, package.READ_CHUNK_BYTES)
+                archive_requests.append(size)
+                return self.stream.read(size)
+
+        self_outer = self
+
+        def observed_open(path, *args, **kwargs):
+            stream = original_open(path, *args, **kwargs)
+            return RawReadSpy(stream) if path == archive else stream
+
+        with patch.object(tarfile.ExFileObject, "read", new=bounded_member_read), \
+                patch.object(Path, "open", new=observed_open), \
+                patch.object(Path, "read_bytes", side_effect=AssertionError("whole archive read attempted")):
+            result = package.verify_archive(archive)
+        self.assertEqual(result["sha256"], expected)
+        self.assertIn(package.READ_CHUNK_BYTES, member_requests)
+        self.assertGreater(len(archive_requests), 2)
 
 if __name__ == "__main__":
     unittest.main()

@@ -185,10 +185,23 @@ packer, binding verification to all 50,201 native SVGs and 22 Work/Projects
 aliases. Rewriting manifests and checksums cannot authorize a reduced or
 substituted native set. A deliberate new baseline requires reviewing changes
 to the pinned digests together with its icon inventory; even manifest
-reformatting changes those digests. A
+reformatting changes those digests. The canonical artwork manifest is also
+pinned, binding the seven selected sources and all 84 rendered PNGs to their
+approved bytes. A
 self-consistent checksum manifest alone is insufficient. Third-party notices
 come directly from the required `THIRD_PARTY_NOTICES.md` source file. The archive
 `README.md` is this document.
+
+Archive verification hashes input and file bodies in chunks of at most 64 KiB.
+It permits at most 60,000 entries, 120,000 headers (including local PAX path
+extensions), 128 MiB compressed input, 256 MiB decompressed tar data and
+128 MiB of file payload. Each file is limited to 32 MiB, the checksum manifest
+to 16 MiB, small JSON metadata to 1 MiB and the theme index to 256 KiB.
+Local PAX headers are capped at 8 KiB and may only extend a path once; sparse,
+global and other extension types are excluded before their payload is parsed.
+Only zero padding is allowed after the tar end marker.
+Only bounded metadata stays in memory during verification. Package collection
+still snapshots the trusted source payload in memory.
 
 The standalone archive excludes earlier theme sets, host overlays, inventories,
 receipts, caches and Git metadata. The package builder operates locally; it does not publish a release or push Git commits.
