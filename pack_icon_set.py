@@ -68,7 +68,7 @@ V1_CODE_DIGESTS = {
     "tests/test_icon_set_install.py":
         "a09af510c7076c08ba035f74e15979e6d572ac76fd5e263f8f24a6c080897352",
     "tests/test_icon_set_package.py":
-        "fe32cd5b6b82ac2af360c428c73e3a5745a46c306caaf4125835f1a8f70d2029",
+        "68c1c856f106b041c80c0595211ba947a417fa4a1cb01dd187fb51043d1ed19b",
     "tests/test_icon_set_style.py":
         "1aacb9f0e79b0e21d0fbf3a7392d43a7e9da2e4851eb041e7edccf3e6f370df7",
     "tests/test_launcher_icon_overrides.py":
@@ -538,6 +538,8 @@ def verify_archive(path: Path) -> dict:
                         relative = "" if name == ARCHIVE_ROOT else name.removeprefix(ARCHIVE_ROOT + "/")
                         if not allowed_directory(relative):
                             raise ValueError("Archive directory is outside the publication allowlist: " + relative)
+                        if member.mode != 0o755:
+                            raise ValueError("Noncanonical archive permission mode: " + name)
                         directories.add(relative)
                         archive.members.clear()
                         continue
@@ -546,6 +548,9 @@ def verify_archive(path: Path) -> dict:
                     relative = name.removeprefix(ARCHIVE_ROOT + "/")
                     if not allowed_member(relative):
                         raise ValueError("Archive asset is outside the publication allowlist: " + relative)
+                    expected_mode = 0o755 if relative in EXECUTABLES else 0o644
+                    if member.mode != expected_mode:
+                        raise ValueError("Noncanonical archive permission mode: " + name)
                     limit = min(MAX_MEMBER_BYTES, METADATA_LIMITS.get(relative, MAX_MEMBER_BYTES))
                     if member.size < 0 or member.size > limit:
                         raise ValueError("Archive member size budget exceeded: " + relative)

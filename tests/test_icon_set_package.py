@@ -388,20 +388,62 @@ class IconSetPackageTest(unittest.TestCase):
         with self.assertRaises(ValueError):
             package.collect(self.root)
 
-    def write_self_manifested_archive(self, entries, directories=()):
+    def write_self_manifested_archive(self, entries, directories=(), modes=None):
         entries = {name: data for name, data in entries.items() if name != "SHA256SUMS"}
         manifest = "".join(f"{package.digest(data)}  {name}\n" for name, data in sorted(entries.items())).encode()
         output = self.root / "self-manifested.tar.gz"
+        modes = modes or {}
         with tarfile.open(output, "w:gz") as archive:
             for name in ("", *sorted(directories)):
                 info = tarfile.TarInfo(package.ARCHIVE_ROOT + ("/" + name if name else ""))
                 info.type = tarfile.DIRTYPE
+                info.mode = modes.get(name, 0o755)
                 archive.addfile(info)
             for name, data in {**entries, "SHA256SUMS": manifest}.items():
                 info = tarfile.TarInfo(package.ARCHIVE_ROOT + "/" + name)
+                info.mode = modes.get(name, 0o755 if name in package.EXECUTABLES else 0o644)
                 info.size = len(data)
                 archive.addfile(info, io.BytesIO(data))
         return output
+
+    def test_verifier_accepts_canonical_archive_permission_modes(self):
+        entries, directories = package.collect(self.root)
+        archive = self.write_self_manifested_archive(entries, directories)
+        self.assertEqual(package.verify_archive(archive)["files"], len(entries))
+        with tarfile.open(archive) as reader:
+            for member in reader:
+                relative = member.name.removeprefix(package.ARCHIVE_ROOT + "/")
+                expected = 0o755 if member.isdir() or relative in package.EXECUTABLES else 0o644
+                self.assertEqual(member.mode, expected, member.name)
+
+    def test_verifier_rejects_noncanonical_directory_permission_modes(self):
+        entries, directories = package.collect(self.root)
+        for name in ("", "assets", package.THEME_DIRECTORY + "/apps/16@2x"):
+            for mode in (0o0000, 0o0644, 0o0700, 0o0777, 0o1755, 0o2755, 0o4755):
+                with self.subTest(directory=name, mode=oct(mode)):
+                    archive = self.write_self_manifested_archive(entries, directories, {name: mode})
+                    with self.assertRaisesRegex(ValueError, "Noncanonical archive permission mode"):
+                        package.verify_archive(archive)
+
+    def test_verifier_rejects_noncanonical_executable_permission_modes(self):
+        entries, directories = package.collect(self.root)
+        for name in sorted(package.EXECUTABLES):
+            for mode in (0o0000, 0o0644, 0o0744, 0o0777, 0o1755, 0o2755, 0o4755):
+                with self.subTest(executable=name, mode=oct(mode)):
+                    archive = self.write_self_manifested_archive(entries, directories, {name: mode})
+                    with self.assertRaisesRegex(ValueError, "Noncanonical archive permission mode"):
+                        package.verify_archive(archive)
+
+    def test_verifier_rejects_noncanonical_asset_permission_modes(self):
+        entries, directories = package.collect(self.root)
+        for name in ("README.md", "SHA256SUMS", "LICENSE", "icon_set_style.py",
+                     "tests/test_icon_set_package.py", package.THEME_DIRECTORY + "/apps/48/example.svg",
+                     "assets/icon-set-v1.0/witnessops-ai-cli.png"):
+            for mode in (0o0000, 0o0600, 0o0666, 0o0755, 0o1644, 0o2644, 0o4644):
+                with self.subTest(asset=name, mode=oct(mode)):
+                    archive = self.write_self_manifested_archive(entries, directories, {name: mode})
+                    with self.assertRaisesRegex(ValueError, "Noncanonical archive permission mode"):
+                        package.verify_archive(archive)
 
     def test_notice_file_is_canonical_and_required(self):
         notice = self.root / "THIRD_PARTY_NOTICES.md"
@@ -900,12 +942,20 @@ class IconSetArchiveLimitsTest(unittest.TestCase):
         self.addCleanup(temporary.cleanup)
         self.root = Path(temporary.name)
 
-    def raw_header(self, relative="LICENSE", size=0, kind=tarfile.REGTYPE):
+    def raw_header(self, relative="LICENSE", size=0, kind=tarfile.REGTYPE, mode=None):
         info = tarfile.TarInfo(package.ARCHIVE_ROOT + "/" + relative)
         info.size = size
         info.type = kind
+        info.mode = (0o755 if kind == tarfile.DIRTYPE or relative in package.EXECUTABLES
+                     else 0o644) if mode is None else mode
         info.linkname = "unused-target" if kind in (tarfile.SYMTYPE, tarfile.LNKTYPE) else ""
-        return info.tobuf(format=tarfile.USTAR_FORMAT)
+        header = bytearray(info.tobuf(format=tarfile.USTAR_FORMAT))
+        if mode is not None:
+            # TarInfo.tobuf masks upper bits; write the adversarial raw field.
+            header[100:108] = f"{mode:07o}\0".encode()
+            header[148:156] = b"        "
+            header[148:156] = f"{sum(header):06o}\0 ".encode()
+        return bytes(header)
 
     def padded(self, data):
         return data + b"\0" * (-len(data) % tarfile.BLOCKSIZE)
@@ -931,6 +981,25 @@ class IconSetArchiveLimitsTest(unittest.TestCase):
         with patch.object(tarfile.TarFile, "extractfile", side_effect=AssertionError("body extraction attempted")):
             with self.assertRaisesRegex(ValueError, reason):
                 package.verify_archive(archive)
+
+    def test_permission_modes_are_refused_before_extracting_body(self):
+        cases = (("", tarfile.DIRTYPE, 0o0000),
+                 ("assets", tarfile.DIRTYPE, 0o0777),
+                 ("install_icon_set.py", tarfile.REGTYPE, 0o0644),
+                 ("LICENSE", tarfile.REGTYPE, 0o0755),
+                 ("SHA256SUMS", tarfile.REGTYPE, 0o4644),
+                 ("", tarfile.DIRTYPE, 0o10755),
+                 ("install_icon_set.py", tarfile.REGTYPE, 0o10755),
+                 ("LICENSE", tarfile.REGTYPE, 0o10644))
+        for name, kind, mode in cases:
+            with self.subTest(member=name, mode=oct(mode)):
+                archive = self.archive(self.raw_header(name, kind=kind, mode=mode))
+                self.assert_before_extract(archive, "Noncanonical archive permission mode")
+        # Apply the policy to the final PAX-resolved publication path.
+        long_path = package.ARCHIVE_ROOT + "/" + package.THEME_DIRECTORY + "/apps/48/" + "a" * 120 + ".svg"
+        archive = self.archive(self.pax({"path": long_path})
+                               + self.raw_header("install_icon_set.py", mode=0o0755))
+        self.assert_before_extract(archive, "Noncanonical archive permission mode")
 
     def test_oversized_regular_header_is_refused_before_extracting_body(self):
         archive = self.archive(self.raw_header(size=package.MAX_MEMBER_BYTES + 1))
