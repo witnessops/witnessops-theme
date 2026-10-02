@@ -140,7 +140,10 @@ does not reproduce the committed v1.0 bytes. Use the committed package when
 creating its standalone archive. `build_icon_set.py --output NEW_DIRECTORY`
 creates a fresh native derivative from `/usr/share/icons/breeze-dark` and
 requires the corresponding system package copyright file. It refuses to
-overwrite an existing output directory.
+overwrite an existing output directory. Native builds enumerate only direct SVG
+files in the source theme's declared directories, including HiDPI aliases. The
+committed v1.0 baseline also retains recorded upstream variants that the source
+index does not advertise; those original artifact bytes are preserved.
 
 The native source is KDE Breeze Icons. Breeze artwork and derivatives retain
 their applicable artwork licenses, including the exceptions recorded in the
@@ -166,7 +169,13 @@ size coverage and competing local SVG variants. It materializes regular files
 and directories, writes a complete internal `SHA256SUMS`, and verifies the archive
 without extracting it. It uses an explicit allowlist containing only this
 v1.0 set, its selected artwork, implementation, relevant tests, documentation and
-licenses. Its archive `README.md` is this document.
+licenses. Only the fixed native category/size SVG subtrees and selected app PNGs
+are accepted; every SVG also requires matching provenance. The archive verifier
+requires the mandatory scripts, licenses, theme index and artwork, then checks
+the same provenance and authored-size rules against the bytes it reads. A
+self-consistent checksum manifest alone is insufficient. Third-party notices
+come directly from the required `THIRD_PARTY_NOTICES.md` source file. The archive
+`README.md` is this document.
 
 The standalone archive excludes earlier theme sets, host overlays, inventories,
 receipts, caches and Git metadata. The package builder operates locally; it does not publish a release or push Git commits.

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import configparser
+from dataclasses import dataclass
 import gzip
 import hashlib
 import io
@@ -22,7 +23,7 @@ THEME = "WitnessOpsIconsV1_0"
 ARCHIVE_ROOT = "WitnessOps-Icon-Set-v" + VERSION
 THEME_DIRECTORY = "packages/icon-set-v1.0/" + THEME
 FILE_ALLOWLIST = (
-    "ICONSET.md", "LICENSE", "pack_icon_set.py", "build_icon_set.py",
+    "ICONSET.md", "LICENSE", "THIRD_PARTY_NOTICES.md", "pack_icon_set.py", "build_icon_set.py",
     "icon_set_style.py", "install_icon_set.py", "tools/inventory_icons.py",
     "tools/launcher_icon_overrides.py", "tests/test_icon_inventory.py",
     "tests/test_icon_set_build.py", "tests/test_icon_set_style.py",
@@ -55,36 +56,25 @@ AUTHORED = {
 AUTHORED_KEYS = frozenset(key for keys in AUTHORED.values() for key in keys)
 SIZES = (16, 24, 32, 48, 64, 128, 256)
 FOLDER_ALIAS_CANONICAL = {"folder-work": "folder-documents", "folder-projects": "folder-development"}
-NOTICES = """# Artwork and implementation notices
-
-The implementation scripts use the included repository LICENSE (Apache-2.0).
-Native KDE Breeze artwork and derivatives retain their applicable licenses.
-Consult packages/icon-set-v1.0/WitnessOpsIconsV1_0/COPYRIGHT-BREEZE for source
-copyright notices and exceptions, and licenses/Breeze-COPYING-ICONS for the
-Breeze artwork license. The full GPL-3.0, LGPL-2.1 and CC-BY-SA-4.0
-texts are included in licenses/. The Skladnik icon at apps/48/skladnik.svg
-is unchanged from Breeze and retains its embedded CC-BY-SA-4.0 notice.
-Attribution: Manuel Jesús de la Fuente <m@nueljl.in>.
-License: https://creativecommons.org/licenses/by-sa/4.0/
-The folder-edit-sign-encrypt SVGs and their native aliases retain g10 Code GmbH
-and Carl Schwan LGPL-2.1-or-later notices, including the native 24px source.
-WitnessOps-authored artwork and implementation use the repository Apache-2.0
-license, subject to the retained third-party artwork and trademark notices.
-The implementation license does not relicense that
-artwork. WitnessOps native paint modifications were made on 2026-10-02;
-source and transformation hashes identify which files changed in
-assets/icon-set-v1.0/PROVENANCE.json. Selected WitnessOps artwork provenance is
-recorded in assets/icon-set-v1.0/artwork.json.
-
-Third-party application names and marks belong to their respective owners.
-This archive excludes host-collected original application logos and private
-overlays; installed application artwork can be found through hicolor fallback.
-Upstream Breeze Icons: https://invent.kde.org/frameworks/breeze-icons
-""".encode()
+NATIVE_CATEGORIES = frozenset((
+    "actions", "animations", "applets", "apps", "categories", "devices",
+    "emblems", "emotes", "mimetypes", "places", "preferences", "status",
+))
+NATIVE_DIRECTORIES = frozenset((
+    "8", "12", "16", "22", "24", "32", "48", "64", "96", "128", "256",
+    "16@2x", "16@3x", "22@2x", "22@3x", "24@2x", "24@3x", "32@2x", "32@3x",
+))
 
 
-def digest(data: bytes) -> str:
-    return hashlib.sha256(data).hexdigest()
+@dataclass(frozen=True, slots=True)
+class VerifiedFile:
+    """Retain integrity evidence without another copy of archive artwork bytes."""
+    sha256: str
+    header: bytes
+
+
+def digest(data: bytes | VerifiedFile) -> str:
+    return data.sha256 if isinstance(data, VerifiedFile) else hashlib.sha256(data).hexdigest()
 
 
 def safe_relative(name: str) -> PurePosixPath:
@@ -98,7 +88,7 @@ def safe_relative(name: str) -> PurePosixPath:
 def allowed_member(name: str) -> bool:
     if any(part.startswith(".") for part in PurePosixPath(name).parts):
         return False
-    if name in FILE_ALLOWLIST + OPTIONAL_FILES + ("README.md", "THIRD_PARTY_NOTICES.md", "SHA256SUMS"):
+    if name in FILE_ALLOWLIST + OPTIONAL_FILES + ("README.md", "SHA256SUMS"):
         return True
     prefix = THEME_DIRECTORY + "/"
     return name.startswith(prefix) and permitted_theme_file(name.removeprefix(prefix))
@@ -110,8 +100,16 @@ def allowed_directory(name: str) -> bool:
     path = PurePosixPath(name)
     if any(part.startswith(".") for part in path.parts):
         return False
-    if name == THEME_DIRECTORY or name.startswith(THEME_DIRECTORY + "/"):
+    if name == THEME_DIRECTORY:
         return True
+    prefix = THEME_DIRECTORY + "/"
+    if name.startswith(prefix):
+        parts = PurePosixPath(name.removeprefix(prefix)).parts
+        if parts[0] in NATIVE_CATEGORIES:
+            return len(parts) == 1 or (len(parts) == 2 and parts[1] in NATIVE_DIRECTORIES)
+        return (parts == ("local",) or
+                (len(parts) in (2, 3) and parts[0] == "local" and parts[1] in {str(size) for size in SIZES}
+                 and (len(parts) == 2 or parts[2] == "apps")))
     return any(path in PurePosixPath(member).parents for member in FILE_ALLOWLIST + OPTIONAL_FILES + (THEME_DIRECTORY,))
 
 
@@ -129,7 +127,8 @@ def permitted_theme_file(relative: str) -> bool:
     if relative in {"index.theme", "COPYING-BREEZE-ICONS", "COPYRIGHT-BREEZE"}:
         return True
     if path.suffix == ".svg":
-        return True
+        return (len(path.parts) == 3 and path.parts[0] in NATIVE_CATEGORIES
+                and path.parts[1] in NATIVE_DIRECTORIES)
     # Only the authored WitnessOps PNGs can appear in the public theme. Private
     # hicolor/host logo overlays must never enter through the directory allowlist.
     return (len(path.parts) == 4 and path.parts[0] == "local"
@@ -164,14 +163,18 @@ def collect(root: Path = ROOT) -> tuple[dict[str, bytes], set[str]]:
             raise ValueError("Unexpected public theme asset: " + relative)
     validate_payload(entries, directories)
     entries["README.md"] = entries["ICONSET.md"]
-    entries["THIRD_PARTY_NOTICES.md"] = NOTICES
     entries["SHA256SUMS"] = "".join(f"{digest(data)}  {name}\n" for name, data in sorted(entries.items())).encode()
     for name in tuple(entries) + tuple(directories):
         directories.update(parent.as_posix() for parent in safe_relative(name).parents if parent.parts)
     return entries, directories
 
 
-def validate_payload(entries: dict[str, bytes], directories: set[str]) -> None:
+def validate_payload(entries: dict[str, bytes | VerifiedFile], directories: set[str]) -> None:
+    required = set(FILE_ALLOWLIST) | {THEME_DIRECTORY + "/" + name for name in
+                                     ("index.theme", "COPYRIGHT-BREEZE", "COPYING-BREEZE-ICONS")}
+    missing = required - entries.keys()
+    if missing:
+        raise ValueError("Missing mandatory public payload: " + sorted(missing)[0])
     index_name = THEME_DIRECTORY + "/index.theme"
     if index_name not in entries:
         raise ValueError("Missing public theme index")
@@ -190,12 +193,15 @@ def validate_payload(entries: dict[str, bytes], directories: set[str]) -> None:
     provenance = json.loads(entries["assets/icon-set-v1.0/PROVENANCE.json"])
     if provenance.get("theme_identity") != THEME or provenance.get("version") != VERSION:
         raise ValueError("Native provenance identity differs")
-    if not isinstance(provenance.get("records"), list) or len(provenance["records"]) != provenance.get("file_count"):
+    if (not isinstance(provenance.get("records"), list) or not provenance["records"]
+            or len(provenance["records"]) != provenance.get("file_count")):
         raise ValueError("Incomplete native provenance records")
     seen = set()
     for record in provenance["records"]:
         relative = safe_relative(record["path"]).as_posix()
         name = THEME_DIRECTORY + "/" + relative
+        if not relative.endswith(".svg") or not permitted_theme_file(relative):
+            raise ValueError("Native provenance path is outside the declared publication scope: " + relative)
         if name in seen or name not in entries or digest(entries[name]) != record["sha256"]:
             raise ValueError("Native provenance does not match public payload: " + relative)
         seen.add(name)
@@ -216,7 +222,8 @@ def validate_payload(entries: dict[str, bytes], directories: set[str]) -> None:
             if (len(target.parts) != 3 or target.parts[0] != "places" or target.suffix != ".svg"
                     or not re.fullmatch(r"\d+(?:@\d+x)?", target.parts[1])
                     or len(source.parts) != 3 or source.parts[0] != "places"
-                    or source.name != str(expected_source) + ".svg"):
+                    or expected_source is None or source.parts[1] != target.parts[1]
+                    or source.name != expected_source + ".svg"):
                 raise ValueError("Folder alias is outside its declared native scope: " + record["path"])
             target_name = THEME_DIRECTORY + "/" + target.as_posix()
             source_name = THEME_DIRECTORY + "/" + source.as_posix()
@@ -240,8 +247,10 @@ def validate_payload(entries: dict[str, bytes], directories: set[str]) -> None:
     validate_artwork(entries)
 
 
-def png_dimensions(data: bytes, name: str) -> tuple[int, int]:
+def png_dimensions(data: bytes | VerifiedFile, name: str) -> tuple[int, int]:
     """Check the PNG header without requiring the rendering dependency."""
+    if isinstance(data, VerifiedFile):
+        data = data.header
     if (len(data) < 33 or not data.startswith(b"\x89PNG\r\n\x1a\n")
             or data[8:16] != b"\x00\x00\x00\rIHDR"):
         raise ValueError("Selected artwork has no valid PNG header: " + name)
@@ -251,7 +260,7 @@ def png_dimensions(data: bytes, name: str) -> tuple[int, int]:
     return dimensions
 
 
-def validate_artwork(entries: dict[str, bytes]) -> None:
+def validate_artwork(entries: dict[str, bytes | VerifiedFile]) -> None:
     """Require selected source bytes and all declared application size variants."""
     artwork = json.loads(entries["assets/icon-set-v1.0/artwork.json"])
     def public_metadata(value):
@@ -316,7 +325,10 @@ def verify_archive(path: Path) -> dict:
     checksums = {}
     manifest = None
     seen = set()
-    directories = 0
+    directories = set()
+    entries = {}
+    metadata = {"assets/icon-set-v1.0/PROVENANCE.json", "assets/icon-set-v1.0/artwork.json",
+                "assets/icon-set-v1.0/folder-aliases.json", THEME_DIRECTORY + "/index.theme"}
     with tarfile.open(path, "r:gz") as archive:
         for member in archive:
             name = safe_relative(member.name).as_posix()
@@ -327,7 +339,7 @@ def verify_archive(path: Path) -> dict:
                 relative = "" if name == ARCHIVE_ROOT else name.removeprefix(ARCHIVE_ROOT + "/")
                 if not allowed_directory(relative):
                     raise ValueError("Archive directory is outside the publication allowlist: " + relative)
-                directories += 1
+                directories.add(relative)
                 continue
             if not member.isfile() or member.issym() or member.islnk():
                 raise ValueError("Archive contains a non-regular asset: " + name)
@@ -342,6 +354,8 @@ def verify_archive(path: Path) -> dict:
                 manifest = data.decode()
             else:
                 checksums[relative] = digest(data)
+                entries[relative] = (data if relative in metadata else
+                                     VerifiedFile(checksums[relative], data[:33]))
     expected = {}
     for line in (manifest or "").splitlines():
         match = re.fullmatch(r"([0-9a-f]{64})  (.+)", line)
@@ -351,7 +365,10 @@ def verify_archive(path: Path) -> dict:
         expected[match[2]] = match[1]
     if not expected or expected != checksums:
         raise ValueError("Archive bytes differ from the complete internal checksum manifest")
-    return {"files": len(checksums) + 1, "directories": directories,
+    validate_payload(entries, directories)
+    if "README.md" not in entries or digest(entries["README.md"]) != digest(entries["ICONSET.md"]):
+        raise ValueError("Archive README is missing or differs from the component guide")
+    return {"files": len(checksums) + 1, "directories": len(directories),
             "sha256": digest(Path(path).read_bytes())}
 
 

@@ -237,7 +237,7 @@ class IconSetPackageTest(unittest.TestCase):
         entries, _ = package.collect(self.root)
         self.assertEqual(entries[package.THEME_DIRECTORY + "/apps/16/utilities-terminal.svg"], data)
         self.native_asset("local/16/apps/konsole.svg", data)
-        with self.assertRaisesRegex(ValueError, "Competing authored app variant"):
+        with self.assertRaisesRegex(ValueError, "Unexpected public theme asset"):
             package.collect(self.root)
 
     def test_selected_source_and_rendered_hash_drift_are_refused(self):
@@ -334,6 +334,120 @@ class IconSetPackageTest(unittest.TestCase):
             package.collect(self.root)
         metadata.write_text(json.dumps({"schema_version": 1, "theme_identity": package.THEME, "records": records + [records[0]]}))
         with self.assertRaises(ValueError):
+            package.collect(self.root)
+
+    def write_self_manifested_archive(self, entries, directories=()):
+        entries = {name: data for name, data in entries.items() if name != "SHA256SUMS"}
+        manifest = "".join(f"{package.digest(data)}  {name}\n" for name, data in sorted(entries.items())).encode()
+        output = self.root / "self-manifested.tar.gz"
+        with tarfile.open(output, "w:gz") as archive:
+            for name in ("", *sorted(directories)):
+                info = tarfile.TarInfo(package.ARCHIVE_ROOT + ("/" + name if name else ""))
+                info.type = tarfile.DIRTYPE
+                archive.addfile(info)
+            for name, data in {**entries, "SHA256SUMS": manifest}.items():
+                info = tarfile.TarInfo(package.ARCHIVE_ROOT + "/" + name)
+                info.size = len(data)
+                archive.addfile(info, io.BytesIO(data))
+        return output
+
+    def test_notice_file_is_canonical_and_required(self):
+        notice = self.root / "THIRD_PARTY_NOTICES.md"
+        notice.write_bytes(b"Current source attribution and license notices\n")
+        result = package.pack(self.root / "notices.tar.gz", self.root)
+        with tarfile.open(result["archive"]) as archive:
+            data = archive.extractfile(package.ARCHIVE_ROOT + "/THIRD_PARTY_NOTICES.md").read()
+        self.assertEqual(data, notice.read_bytes())
+        notice.unlink()
+        with self.assertRaisesRegex(ValueError, "Missing required regular file"):
+            package.collect(self.root)
+
+    def test_recorded_svgs_outside_native_publication_subtrees_are_refused(self):
+        for relative in ("private.svg", "private/48/logo.svg", "apps/48/nested/logo.svg", "apps/999/logo.svg"):
+            with self.subTest(relative=relative):
+                self.native_asset(relative, self.svg)
+                with self.assertRaisesRegex(ValueError, "Unexpected public theme asset"):
+                    package.collect(self.root)
+                (self.theme / relative).unlink()
+                provenance_path = self.root / "assets/icon-set-v1.0/PROVENANCE.json"
+                metadata = json.loads(provenance_path.read_text())
+                metadata["records"].pop()
+                metadata["file_count"] = len(metadata["records"])
+                provenance_path.write_text(json.dumps(metadata))
+
+    def test_verifier_rejects_self_manifested_readme_only_archive(self):
+        archive = self.write_self_manifested_archive({"README.md": b"truncated archive\n"})
+        with self.assertRaisesRegex(ValueError, "Missing mandatory public payload"):
+            package.verify_archive(archive)
+
+    def test_verifier_requires_scripts_licenses_and_recorded_theme_artwork(self):
+        entries, directories = package.collect(self.root)
+        for missing in ("README.md", "install_icon_set.py", "licenses/GPL-3.0.txt",
+                        package.THEME_DIRECTORY + "/COPYRIGHT-BREEZE",
+                        package.THEME_DIRECTORY + "/apps/48/example.svg"):
+            with self.subTest(missing=missing):
+                truncated = {name: data for name, data in entries.items() if name != missing}
+                archive = self.write_self_manifested_archive(truncated, directories)
+                with self.assertRaises(ValueError):
+                    package.verify_archive(archive)
+
+    def test_verifier_checks_provenance_even_when_internal_manifest_agrees(self):
+        entries, directories = package.collect(self.root)
+        native = package.THEME_DIRECTORY + "/apps/48/example.svg"
+        entries[native] += b"changed artwork"
+        archive = self.write_self_manifested_archive(entries, directories)
+        with self.assertRaisesRegex(ValueError, "Native provenance does not match"):
+            package.verify_archive(archive)
+
+    def test_verifier_checks_authored_png_dimensions_and_alias_hashes(self):
+        entries, directories = package.collect(self.root)
+        relative = "local/24/apps/konsole.png"
+        native = package.THEME_DIRECTORY + "/" + relative
+        metadata_name = "assets/icon-set-v1.0/artwork.json"
+        original_metadata = entries[metadata_name]
+        for data, message in ((png(32), "dimensions differ"),
+                              (png(24, (3, 4, 5, 255)), "aliases differ")):
+            with self.subTest(message=message):
+                entries[native] = data
+                metadata = json.loads(original_metadata)
+                next(record for record in metadata["rendered"] if record["path"] == relative)["sha256"] = package.digest(data)
+                entries[metadata_name] = json.dumps(metadata).encode()
+                archive = self.write_self_manifested_archive(entries, directories)
+                with self.assertRaisesRegex(ValueError, message):
+                    package.verify_archive(archive)
+
+    def test_verifier_checks_folder_aliases_from_streamed_integrity_records(self):
+        self.folder_aliases()
+        entries, directories = package.collect(self.root)
+        valid = self.write_self_manifested_archive(entries, directories)
+        self.assertEqual(package.verify_archive(valid)["files"], len(entries))
+        alias = package.THEME_DIRECTORY + "/places/64/folder-work.svg"
+        entries[alias] += b"changed alias"
+        invalid = self.write_self_manifested_archive(entries, directories)
+        with self.assertRaisesRegex(ValueError, "Native folder alias differs"):
+            package.verify_archive(invalid)
+
+    def test_folder_alias_source_and_target_size_must_match(self):
+        metadata, records = self.folder_aliases()
+        data = (self.theme / records[0]["source"]).read_bytes()
+        source = "places/32/folder-documents.svg"
+        self.native_asset(source, data)
+        records[0]["source"] = source
+        metadata.write_text(json.dumps({"schema_version": 1, "theme_identity": package.THEME, "records": records}))
+        with self.assertRaisesRegex(ValueError, "Folder alias is outside"):
+            package.collect(self.root)
+
+    def test_unknown_folder_alias_cannot_claim_none_as_its_canonical_source(self):
+        metadata, records = self.folder_aliases()
+        data = (self.theme / records[0]["path"]).read_bytes()
+        (self.theme / records[0]["path"]).unlink()
+        target = "places/64/folder-unknown.svg"
+        source = "places/64/None.svg"
+        self.native_asset(source, data)
+        (self.theme / target).write_bytes(data)
+        records[0].update(path=target, source=source)
+        metadata.write_text(json.dumps({"schema_version": 1, "theme_identity": package.THEME, "records": records}))
+        with self.assertRaisesRegex(ValueError, "Folder alias is outside"):
             package.collect(self.root)
 
     def test_optional_preview_tool_is_allowlisted(self):

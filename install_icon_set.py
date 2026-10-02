@@ -123,7 +123,7 @@ def write_theme(config, theme, env):
     command = ["kwriteconfig6", "--file", str(path), "--group", "Icons",
                "--key", "Theme", "--notify"]
     if theme is None:
-        command.extend(["--delete", ""])
+        command.append("--delete")
     else:
         command.append(theme)
     # KDE's native --notify sends the configuration change notification over

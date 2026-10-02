@@ -124,8 +124,14 @@ assert '--notify' in args
 path = pathlib.Path(args[args.index('--file') + 1])
 lines = path.read_text().splitlines(keepends=True) if path.exists() else []
 output, inside, wrote = [], False, False
-value = args[-1]
 delete = '--delete' in args
+expected = ['--file', str(path), '--group', 'Icons', '--key', 'Theme', '--notify']
+if delete:
+    assert args == expected + ['--delete'], args
+    value = None
+else:
+    assert len(args) == len(expected) + 1 and args[:-1] == expected, args
+    value = args[-1]
 for line in lines:
     if line.startswith('['):
         if inside and not wrote and not delete:
@@ -163,7 +169,8 @@ if os.environ.get('FIXTURE_FAIL_ON_NEW_THEME') and value == 'WitnessOpsIconsV1_0
         self.assertFalse(self.target.exists())
         commands = [json.loads(line) for line in (self.root / "commands.jsonl").read_text().splitlines()]
         self.assertEqual(len(commands), 2)
-        self.assertTrue(all(command[command.index("--file") + 1] == str(self.globals) for command in commands))
+        expected = ["--file", str(self.globals), "--group", "Icons", "--key", "Theme", "--notify"]
+        self.assertEqual(commands, [expected + [THEME], expected + ["breeze-dark"]])
 
     def test_changed_selection_refused_and_absent_previous_key_restored(self):
         env = self.fake_kde_environment()
@@ -178,7 +185,8 @@ if os.environ.get('FIXTURE_FAIL_ON_NEW_THEME') and value == 'WitnessOpsIconsV1_0
         self.assert_success(self.command("restore", "--backup", str(receipt), active=True, env=env))
         self.assertEqual(self.globals.read_text(), self.before.replace("Theme=breeze-dark\n", ""))
         commands = [json.loads(line) for line in (self.root / "commands.jsonl").read_text().splitlines()]
-        self.assertIn("--delete", commands[-1])
+        self.assertEqual(commands[-1], ["--file", str(self.globals), "--group", "Icons",
+                                        "--key", "Theme", "--notify", "--delete"])
 
     def test_failed_activation_restores_prior_selection_and_owned_files(self):
         env = self.fake_kde_environment()
@@ -187,6 +195,20 @@ if os.environ.get('FIXTURE_FAIL_ON_NEW_THEME') and value == 'WitnessOpsIconsV1_0
         self.assertEqual(self.globals.read_text(), self.before)
         self.assertFalse(self.target.exists())
         self.assertEqual(json.loads(self.receipts()[0].read_text())["status"], "rolled_back")
+
+
+    def test_failed_activation_removes_theme_key_when_prior_key_was_absent(self):
+        env = self.fake_kde_environment()
+        env["FIXTURE_FAIL_ON_NEW_THEME"] = "1"
+        before = self.before.replace("Theme=breeze-dark\n", "")
+        self.globals.write_text(before)
+        self.assertNotEqual(self.command("install", "--yes", active=True, env=env).returncode, 0)
+        self.assertEqual(self.globals.read_text(), before)
+        self.assertFalse(self.target.exists())
+        self.assertEqual(json.loads(self.receipts()[0].read_text())["status"], "rolled_back")
+        commands = [json.loads(line) for line in (self.root / "commands.jsonl").read_text().splitlines()]
+        expected = ["--file", str(self.globals), "--group", "Icons", "--key", "Theme", "--notify"]
+        self.assertEqual(commands, [expected + [THEME], expected + ["--delete"]])
 
 
 if __name__ == "__main__":

@@ -102,7 +102,7 @@ def native_paths(source: Path) -> list[Path]:
     index.read(source / 'index.theme')
     theme = index['Icon Theme']
     directories = theme['Directories'].split(',') + theme.get('ScaledDirectories', '').split(',')
-    paths = set(source.rglob('*.svg'))
+    paths = set()
     for relative in directories:
         if not relative:
             continue
@@ -110,9 +110,9 @@ def native_paths(source: Path) -> list[Path]:
             raise ValueError('Unsafe native theme directory')
         directory = source / relative
         if directory.is_dir():
-            # rglob on a symlink root traverses its declared contents, unlike
-            # rglob on the parent theme root. Output is always regular files.
-            paths.update(directory.rglob('*.svg'))
+            # Direct glob preserves declared HiDPI aliases without importing
+            # nested trees outside the category/size/icon.svg namespace.
+            paths.update(directory.glob('*.svg'))
     return sorted(paths)
 
 

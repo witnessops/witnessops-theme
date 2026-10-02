@@ -150,6 +150,34 @@ class IconSetBuildTest(unittest.TestCase):
             self.assertEqual(int(section["Size"]), size)
             self.assertEqual(section["Context"], "Applications")
 
+    def test_native_inventory_excludes_undeclared_trees_and_root_icons_but_keeps_hidpi_aliases(self):
+        native = self.root / "native"
+        expected = ("apps/16/example.svg", "apps/16@2x/example.svg",
+                    "apps/48/example.svg", "places/64/folder.svg")
+        for name in ("apps/16/example.svg", "apps/48/example.svg", "places/64/folder.svg",
+                     "undeclared/48/private.svg", "apps/96/unlisted.svg", "root.svg",
+                     "apps/48/unexpected/nested.svg"):
+            path = native / name
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(colored_svg("#20282c"))
+        (native / "apps/16@2x").symlink_to("16", target_is_directory=True)
+        (native / "index.theme").write_text(NATIVE_INDEX)
+        observed = [path.relative_to(native).as_posix() for path in build_icon_set.native_paths(native)]
+        self.assertEqual(observed, sorted(expected))
+        self.assertTrue((native / "apps/16@2x/example.svg").is_file())
+        self.assertEqual((native / "apps/16@2x/example.svg").read_bytes(),
+                         (native / "apps/16/example.svg").read_bytes())
+
+    def test_native_inventory_refuses_unsafe_declared_directories(self):
+        native = self.root / "native"
+        native.mkdir()
+        source = native / "index.theme"
+        for directory in ("../outside", "/outside"):
+            with self.subTest(directory=directory):
+                source.write_text(NATIVE_INDEX.replace("apps/16,apps/48,places/64", directory))
+                with self.assertRaisesRegex(ValueError, "Unsafe native theme directory"):
+                    build_icon_set.native_paths(native)
+
     def test_empty_native_directories_are_pruned_without_losing_populated_hidpi_aliases(self):
         native = self.root / "native"
         (native / "apps/16").mkdir(parents=True)
