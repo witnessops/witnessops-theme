@@ -190,6 +190,11 @@ def validate_payload(entries: dict[str, bytes | VerifiedFile], directories: set[
             safe_relative(directory)
             if directory not in index or THEME_DIRECTORY + "/" + directory not in directories:
                 raise ValueError("Unmaterialized advertised icon directory: " + directory)
+    aliases_name = "assets/icon-set-v1.0/folder-aliases.json"
+    alias_assets = {name for name in entries if name.startswith(THEME_DIRECTORY + "/")
+                    and name.endswith(".svg") and PurePosixPath(name).stem in FOLDER_ALIAS_CANONICAL}
+    if alias_assets and aliases_name not in entries:
+        raise ValueError("Missing native folder alias metadata: " + aliases_name)
     provenance = json.loads(entries["assets/icon-set-v1.0/PROVENANCE.json"])
     if provenance.get("theme_identity") != THEME or provenance.get("version") != VERSION:
         raise ValueError("Native provenance identity differs")
@@ -202,10 +207,11 @@ def validate_payload(entries: dict[str, bytes | VerifiedFile], directories: set[
         name = THEME_DIRECTORY + "/" + relative
         if not relative.endswith(".svg") or not permitted_theme_file(relative):
             raise ValueError("Native provenance path is outside the declared publication scope: " + relative)
+        if PurePosixPath(relative).stem in FOLDER_ALIAS_CANONICAL:
+            raise ValueError("Reserved folder alias must use folder-aliases.json: " + relative)
         if name in seen or name not in entries or digest(entries[name]) != record["sha256"]:
             raise ValueError("Native provenance does not match public payload: " + relative)
         seen.add(name)
-    aliases_name = "assets/icon-set-v1.0/folder-aliases.json"
     if aliases_name in entries:
         aliases = json.loads(entries[aliases_name])
         if (not isinstance(aliases, dict) or aliases.get("schema_version") != 1

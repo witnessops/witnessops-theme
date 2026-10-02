@@ -43,10 +43,42 @@ def fail(code: str) -> None:
 
 
 def safe_path(path: Path) -> Path:
-    path = path.expanduser().absolute()
+    path = path.expanduser()
+    if ".." in path.parts:
+        fail("parent_traversal_refused")
+    path = path.absolute()
     if any(component.is_symlink() for component in (path, *path.parents)):
         fail("symlink_refused")
     return path
+
+
+def mutation_user() -> None:
+    # A user-scoped override must never gain system-wide write authority from
+    # sudo, root, or a setuid effective identity, including direct API calls.
+    uid = os.getuid()
+    if uid == 0 or os.geteuid() != uid:
+        fail("desktop_user_required")
+
+
+def user_owned_path(path: Path, directory: bool = False) -> Path:
+    mutation_user()
+    path = safe_path(path)
+    existing = next(item for item in (path, *path.parents) if item.exists())
+    if existing == Path("/") or existing.stat().st_uid != os.getuid():
+        fail("user_owned_destination_required")
+    if ((existing != path or directory) and not existing.is_dir()
+            or existing == path and not (existing.is_dir() or existing.is_file())):
+        fail("invalid_mutation_destination")
+    return path
+
+
+def mutation_directories(data_home: Path) -> Path:
+    data_home = user_owned_path(data_home, directory=True)
+    # Check nested existing destinations too: a user-owned XDG root does not
+    # establish ownership of an applications or receipts directory beneath it.
+    for relative in ("applications", "witnessops-theme", "witnessops-theme/receipts"):
+        user_owned_path(data_home / relative, directory=True)
+    return data_home
 
 
 def read_bytes(path: Path) -> bytes:
@@ -104,9 +136,10 @@ def replace_main_icon(data: bytes, expected_icon: str, icon_key: str, desktop_id
 
 
 def atomic_write(path: Path, data: bytes, mode: int) -> None:
-    safe_path(path)
+    path = user_owned_path(path)
+    user_owned_path(path.parent, directory=True)
     path.parent.mkdir(parents=True, exist_ok=True)
-    safe_path(path.parent)
+    user_owned_path(path.parent, directory=True)
     descriptor, temporary = tempfile.mkstemp(prefix=".launcher-icon-", dir=path.parent)
     try:
         with os.fdopen(descriptor, "wb") as stream:
@@ -202,9 +235,12 @@ def prepare(inventory_path: Path, data_home: Path, scope: str = "absolute-icons"
 
 
 def install(inventory_path: Path, data_home: Path, scope: str = "absolute-icons") -> dict:
+    data_home = mutation_directories(data_home)
     prepared = prepare(inventory_path, data_home, scope)
-    data_home = safe_path(data_home)
-    receipts = safe_path(data_home / "witnessops-theme" / "receipts")
+    # Refuse every foreign-owned target before creating receipts or backups.
+    for row in prepared:
+        user_owned_path(Path(row["target"]))
+    receipts = user_owned_path(data_home / "witnessops-theme" / "receipts", directory=True)
     receipts.mkdir(parents=True, exist_ok=True)
     receipts.chmod(0o700)
     stamp = datetime.datetime.now(datetime.timezone.utc).strftime("%Y%m%dT%H%M%S.%fZ") + "-" + uuid.uuid4().hex[:8]
@@ -331,7 +367,17 @@ def verify(receipt: Path, data_home: Path) -> dict:
 
 
 def restore(receipt: Path, data_home: Path) -> dict:
+    data_home = mutation_directories(data_home)
+    receipt = user_owned_path(receipt)
     state, backup_dir = load_receipt(receipt, data_home)
+    user_owned_path(backup_dir, directory=True)
+    # Validate all mutation paths and private restoration inputs before the
+    # receipt or any launcher is changed, including resumed restores.
+    for row in state["rows"]:
+        user_owned_path(Path(row["target"]))
+        for key in ("source_backup", "previous_backup"):
+            if row.get(key) is not None:
+                user_owned_path(backup_dir / row[key])
     if state.get("status") not in {"installed", "restoring", "restored"}:
         fail("receipt_not_installed")
     rows = state["rows"]

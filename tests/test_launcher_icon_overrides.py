@@ -3,9 +3,11 @@ import hashlib
 import importlib.util
 import io
 import json
+import os
 from pathlib import Path
 import tempfile
 import unittest
+from unittest import mock
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -38,6 +40,151 @@ class LauncherIconOverridesTest(unittest.TestCase):
         inventory = root / "inventory.json"
         inventory.write_text(json.dumps({"theme_identity": OVERRIDES.THEME, "apps": rows}))
         return data, inventory, rows, originals
+
+    def snapshot(self, root):
+        return {path.relative_to(root).as_posix(): (path.read_bytes(), path.stat().st_mode & 0o777)
+                for path in root.rglob("*") if path.is_file()}
+
+    def foreign_owner(self, path, owner_uid=None):
+        original_stat = Path.stat
+        foreign_uid = os.getuid() + 1 if owner_uid is None else owner_uid
+
+        def pretend_foreign(candidate, *args, **kwargs):
+            result = original_stat(candidate, *args, **kwargs)
+            if candidate == path:
+                fields = list(result)
+                fields[4] = foreign_uid
+                return os.stat_result(fields)
+            return result
+
+        return mock.patch.object(Path, "stat", new=pretend_foreign)
+
+    def test_privileged_identity_refuses_install_restore_and_atomic_write_without_changes(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            data, inventory, _, _ = self.fixtures(root)
+            receipt = Path(OVERRIDES.install(inventory, data)["receipt"])
+            before = self.snapshot(root)
+            uid = os.getuid()
+            for real_uid, effective_uid in ((0, 0), (uid, 0), (uid, uid + 1), (0, uid)):
+                with self.subTest(real_uid=real_uid, effective_uid=effective_uid):
+                    with mock.patch.object(OVERRIDES.os, "getuid", return_value=real_uid), \
+                            mock.patch.object(OVERRIDES.os, "geteuid", return_value=effective_uid):
+                        for operation in (lambda: OVERRIDES.install(inventory, data),
+                                          lambda: OVERRIDES.restore(receipt, data),
+                                          lambda: OVERRIDES.atomic_write(root / "unexpected.desktop", b"x", 0o600)):
+                            with self.assertRaisesRegex(OVERRIDES.OverrideError, "desktop_user_required"):
+                                operation()
+                        for action, input_flag, input_path in (("install", "--inventory", inventory),
+                                                              ("restore", "--backup", receipt)):
+                            output = io.StringIO()
+                            with contextlib.redirect_stderr(output):
+                                code = OVERRIDES.main([action, "--yes", input_flag, str(input_path),
+                                                       "--data-home", str(data)])
+                            self.assertEqual(code, 1)
+                            self.assertEqual(json.loads(output.getvalue())["reason"], "desktop_user_required")
+                    self.assertEqual(self.snapshot(root), before)
+
+    def test_foreign_owned_install_destinations_refused_before_receipts_or_launcher_writes(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            data, inventory, rows, _ = self.fixtures(root)
+            receipts = data / "witnessops-theme/receipts"
+            receipts.mkdir(parents=True)
+            before = self.snapshot(root)
+            destinations = (data, data / "applications", receipts.parent, receipts,
+                            data / "applications" / rows[0]["desktop_id"])
+            for destination in destinations:
+                with self.subTest(destination=destination.relative_to(root)):
+                    with self.foreign_owner(destination):
+                        with self.assertRaisesRegex(OVERRIDES.OverrideError, "user_owned_destination_required"):
+                            OVERRIDES.install(inventory, data)
+                    self.assertEqual(self.snapshot(root), before)
+                    self.assertEqual(list(receipts.iterdir()), [])
+
+    def test_absent_data_home_with_foreign_owned_closest_ancestor_refused(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            _, inventory, _, _ = self.fixtures(root)
+            data = root / "new-xdg/share"
+            before = self.snapshot(root)
+            with self.foreign_owner(root):
+                with self.assertRaisesRegex(OVERRIDES.OverrideError, "user_owned_destination_required"):
+                    OVERRIDES.install(inventory, data)
+            self.assertFalse(data.parent.exists())
+            self.assertEqual(self.snapshot(root), before)
+
+    def test_foreign_owned_restore_targets_receipts_and_backups_refused_before_any_write(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            data, inventory, rows, _ = self.fixtures(root)
+            receipt = Path(OVERRIDES.install(inventory, data)["receipt"])
+            state = json.loads(receipt.read_text())
+            backups = receipt.parent / state["backup_dir"]
+            first = state["rows"][0]
+            destinations = (data, data / "applications", receipt.parent.parent, receipt.parent,
+                            receipt, backups, backups / first["source_backup"],
+                            backups / first["previous_backup"],
+                            data / "applications" / rows[-1]["desktop_id"])
+            before = self.snapshot(root)
+            for destination in destinations:
+                with self.subTest(destination=destination.relative_to(root)):
+                    with self.foreign_owner(destination):
+                        with self.assertRaisesRegex(OVERRIDES.OverrideError, "user_owned_destination_required"):
+                            OVERRIDES.restore(receipt, data)
+                    self.assertEqual(self.snapshot(root), before)
+
+    def test_parent_traversal_refused_before_install_or_restore_writes(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            data, inventory, _, _ = self.fixtures(root)
+            receipt = Path(OVERRIDES.install(inventory, data)["receipt"])
+            before = self.snapshot(root)
+            traversing_data = data / "applications/.."
+            traversing_receipt = receipt.parent / "../receipts" / receipt.name
+            for operation in (lambda: OVERRIDES.install(inventory, traversing_data),
+                              lambda: OVERRIDES.restore(receipt, traversing_data),
+                              lambda: OVERRIDES.restore(traversing_receipt, data)):
+                with self.assertRaisesRegex(OVERRIDES.OverrideError, "parent_traversal_refused"):
+                    operation()
+                self.assertEqual(self.snapshot(root), before)
+
+    def test_read_only_plan_and_verify_remain_available_without_mutation_authority(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            data, inventory, _, _ = self.fixtures(root)
+            before = self.snapshot(root)
+            with mock.patch.object(OVERRIDES.os, "getuid", return_value=0), \
+                    mock.patch.object(OVERRIDES.os, "geteuid", return_value=0), self.foreign_owner(data):
+                output = io.StringIO()
+                with contextlib.redirect_stdout(output):
+                    code = OVERRIDES.main(["plan", "--inventory", str(inventory), "--data-home", str(data)])
+                self.assertEqual(code, 0)
+                self.assertEqual(json.loads(output.getvalue())["status"], "planned")
+            self.assertEqual(self.snapshot(root), before)
+            receipt = Path(OVERRIDES.install(inventory, data)["receipt"])
+            before = self.snapshot(root)
+            with mock.patch.object(OVERRIDES.os, "getuid", return_value=0), \
+                    mock.patch.object(OVERRIDES.os, "geteuid", return_value=0), self.foreign_owner(data):
+                self.assertEqual(OVERRIDES.verify(receipt, data)["status"], "verified")
+            self.assertEqual(self.snapshot(root), before)
+
+    def test_new_user_owned_data_home_and_system_sources_still_install_and_restore(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            _, inventory, rows, originals = self.fixtures(root)
+            data = root / "new-user-owned/xdg/share"
+            self.assertFalse(data.exists())
+            system_source = originals[rows[-1]["desktop_id"]][0]
+            # Reading a root-owned system launcher is permitted; the new
+            # launcher, private backup, and receipt remain user-owned.
+            with self.foreign_owner(system_source, owner_uid=0):
+                receipt = Path(OVERRIDES.install(inventory, data)["receipt"])
+            self.assertEqual(OVERRIDES.verify(receipt, data)["count"], 3)
+            self.assertEqual(OVERRIDES.restore(receipt, data)["status"], "restored")
+            self.assertEqual(list((data / "applications").iterdir()), [])
+            for source, original in originals.values():
+                self.assertEqual(source.read_bytes(), original)
 
     def test_plan_install_verify_restore_changes_only_main_icon(self):
         with tempfile.TemporaryDirectory() as td:

@@ -22,6 +22,9 @@ WitnessOps artwork, exact source hashes and rendered size hashes are in
 `assets/icon-set-v1.0/artwork.json`.
 `assets/icon-set-v1.0/folder-aliases.json` ties the additional Work and Projects
 folder names to their exact styled native Documents and Development SVGs.
+These names are reserved for alias records; they cannot be classified as native
+source records. Published alias files require this manifest and must match their
+recorded source bytes.
 
 ## Requirements and desktop support
 
@@ -112,7 +115,11 @@ app assets, launcher backups and receipts remain private. The included
 `dialog-password` key to `witnessops-credential-import` in a backed-up user
 launcher. The shared password icon remains native. Launcher commands and other
 fields are preserved. Each scope has its own private verification and rollback
-receipt.
+receipt. Install and restore refuse root or elevated execution and require
+user-owned data directories, launcher destinations and receipt/backup paths.
+System launcher files may be read as sources; changes are written only to the
+user-owned destinations. Temporary user-owned directories are supported through
+`--data-home`.
 
 Plan the named wizard override against a fresh private inventory:
 

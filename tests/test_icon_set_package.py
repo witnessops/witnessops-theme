@@ -427,6 +427,79 @@ class IconSetPackageTest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "Native folder alias differs"):
             package.verify_archive(invalid)
 
+    def test_verifier_rejects_native_provenance_smuggling_without_folder_alias_manifest(self):
+        self.folder_aliases()
+        original, directories = package.collect(self.root)
+        aliases_name = "assets/icon-set-v1.0/folder-aliases.json"
+        provenance_name = "assets/icon-set-v1.0/PROVENANCE.json"
+        records = json.loads(original[aliases_name])["records"]
+        for alias in ("folder-work", "folder-projects"):
+            with self.subTest(alias=alias):
+                entries = dict(original)
+                entries.pop(aliases_name)
+                relative = f"places/64/{alias}.svg"
+                entries[package.THEME_DIRECTORY + "/" + relative] = self.svg + b"arbitrary alias artwork"
+                provenance = json.loads(entries[provenance_name])
+                # Reclassify every alias as native so none remains unrecorded.
+                for record in records:
+                    provenance["records"].append({"path": record["path"],
+                        "sha256": package.digest(entries[package.THEME_DIRECTORY + "/" + record["path"]])})
+                provenance["file_count"] = len(provenance["records"])
+                entries[provenance_name] = json.dumps(provenance).encode()
+                archive = self.write_self_manifested_archive(entries, directories)
+                with self.assertRaisesRegex(ValueError, "Missing native folder alias metadata"):
+                    package.verify_archive(archive)
+
+    def test_verifier_rejects_reserved_alias_native_provenance_with_manifest_present(self):
+        self.folder_aliases()
+        original, directories = package.collect(self.root)
+        aliases_name = "assets/icon-set-v1.0/folder-aliases.json"
+        provenance_name = "assets/icon-set-v1.0/PROVENANCE.json"
+        for alias in ("folder-work", "folder-projects"):
+            with self.subTest(alias=alias):
+                entries = dict(original)
+                relative = f"places/64/{alias}.svg"
+                entries[package.THEME_DIRECTORY + "/" + relative] = self.svg + b"arbitrary alias artwork"
+                provenance = json.loads(entries[provenance_name])
+                provenance["records"].append({"path": relative,
+                    "sha256": package.digest(entries[package.THEME_DIRECTORY + "/" + relative])})
+                provenance["file_count"] = len(provenance["records"])
+                entries[provenance_name] = json.dumps(provenance).encode()
+                aliases = json.loads(entries[aliases_name])
+                aliases["records"] = [record for record in aliases["records"] if record["path"] != relative]
+                entries[aliases_name] = json.dumps(aliases).encode()
+                archive = self.write_self_manifested_archive(entries, directories)
+                with self.assertRaisesRegex(ValueError, "Reserved folder alias"):
+                    package.verify_archive(archive)
+
+    def test_published_alias_assets_require_the_folder_alias_manifest(self):
+        metadata, _ = self.folder_aliases()
+        entries, directories = package.collect(self.root)
+        metadata.unlink()
+        with self.assertRaisesRegex(ValueError, "Missing native folder alias metadata"):
+            package.collect(self.root)
+        entries.pop(metadata.relative_to(self.root).as_posix())
+        archive = self.write_self_manifested_archive(entries, directories)
+        with self.assertRaisesRegex(ValueError, "Missing native folder alias metadata"):
+            package.verify_archive(archive)
+
+    def test_reserved_alias_names_cannot_be_native_records_in_other_categories(self):
+        metadata = self.root / "assets/icon-set-v1.0/folder-aliases.json"
+        metadata.write_text(json.dumps({"schema_version": 1, "theme_identity": package.THEME, "records": []}))
+        provenance_path = self.root / "assets/icon-set-v1.0/PROVENANCE.json"
+        for category in ("apps", "actions"):
+            for alias in ("folder-work", "folder-projects"):
+                with self.subTest(category=category, alias=alias):
+                    relative = f"{category}/48/{alias}.svg"
+                    self.native_asset(relative, self.svg)
+                    with self.assertRaisesRegex(ValueError, "Reserved folder alias"):
+                        package.collect(self.root)
+                    (self.theme / relative).unlink()
+                    provenance = json.loads(provenance_path.read_text())
+                    provenance["records"].pop()
+                    provenance["file_count"] = len(provenance["records"])
+                    provenance_path.write_text(json.dumps(provenance))
+
     def test_folder_alias_source_and_target_size_must_match(self):
         metadata, records = self.folder_aliases()
         data = (self.theme / records[0]["source"]).read_bytes()
