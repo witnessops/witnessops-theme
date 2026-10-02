@@ -2,9 +2,18 @@
 
 A home for WitnessOps appearance components for KDE Plasma.
 
-This first change establishes the repository structure and contribution guidance. The component folders are placeholders. There is no installable theme or icon set in this bootstrap.
+**WitnessOps Icon Set v1.0** is the first implemented component. Its Machined
+Carbon direction uses graphite surfaces, steel edges and restrained petrol
+accents, while keeping different applications and folder types recognizable.
+Plasma themes, wallpapers, cursors and Konsole profiles remain reserved folders.
 
-The next change will add **WitnessOps Icon Set v1.0** as a separately reviewable package. Earlier local theme experiments are outside this repository's initial publication.
+See [ICONSET.md](ICONSET.md) for requirements, installation, verification,
+rollback and packaging. The icon set uses the freedesktop format; the supplied
+activation helper targets Plasma 6.
+
+| AI CLI | BLACK BOX | Browser | Credential Import | VSCodium | Screenshot | Settings |
+| --- | --- | --- | --- | --- | --- | --- |
+| <img src="assets/icon-set-v1.0/witnessops-ai-cli.png" width="88" alt="AI CLI icon"> | <img src="assets/icon-set-v1.0/witnessops-blackbox.png" width="88" alt="BLACK BOX icon"> | <img src="assets/icon-set-v1.0/witnessops-blackbox-browser.png" width="88" alt="Browser icon"> | <img src="assets/icon-set-v1.0/witnessops-credential-import.png" width="88" alt="Credential import icon"> | <img src="assets/icon-set-v1.0/witnessops-vscodium.png" width="88" alt="VSCodium icon"> | <img src="assets/icon-set-v1.0/witnessops-screenshot.png" width="88" alt="Screenshot icon"> | <img src="assets/icon-set-v1.0/witnessops-settings.png" width="88" alt="Settings icon"> |
 
 ## Repository layout
 
@@ -12,6 +21,7 @@ The next change will add **WitnessOps Icon Set v1.0** as a separately reviewable
 | --- | --- |
 | `assets/` | Source artwork and its provenance |
 | `packages/` | Distributable appearance components |
+| `packages/icon-set-v1.0/` | Complete Icon Set v1.0 package |
 | `packages/wallpapers/` | Placeholder for wallpapers |
 | `packages/konsole/` | Placeholder for Konsole profiles and color schemes |
 | `packages/cursors/` | Placeholder for cursor themes |
@@ -28,4 +38,4 @@ Installation instructions, supported Plasma versions and validation results will
 
 ## License
 
-Repository-owned code and documentation use [Apache-2.0](LICENSE). Third-party artwork retains its own license and attribution, recorded with the component that includes it.
+Repository-owned code, documentation and authored artwork use [Apache-2.0](LICENSE). Third-party artwork retains its own license and attribution, recorded with the component that includes it.

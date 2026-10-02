@@ -18,6 +18,6 @@ Include a preview of the actual package files at the sizes used on the desktop. 
 
 Keep host inventories, receipts, backups, credentials and temporary previews under ignored local paths. Share only the sanitized evidence needed to review the change.
 
-## Current bootstrap
+## Icon Set v1.0
 
-This change contains documentation and empty component placeholders. It has no build, test or installation command. Component-specific commands will be added with their implementation.
+Run `python3 -m unittest discover -s tests` after installing the development dependencies in [ICONSET.md](ICONSET.md). Run `python3 pack_icon_set.py` to check provenance and create the standalone archive. Packaging and tests do not activate the desktop theme. Reserved components have no implementation or test suite yet.
