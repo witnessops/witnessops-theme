@@ -31,6 +31,7 @@ FILE_ALLOWLIST = (
     "licenses/Breeze-COPYING-ICONS", "licenses/GPL-3.0.txt",
     "licenses/LGPL-2.1.txt", "licenses/CC-BY-SA-4.0.txt",
     "assets/icon-set-v1.0/PROVENANCE.json",
+    "assets/icon-set-v1.0/folder-aliases.json",
     "assets/icon-set-v1.0/artwork.json",
     "assets/icon-set-v1.0/witnessops-ai-cli.png",
     "assets/icon-set-v1.0/witnessops-blackbox.png",
@@ -40,8 +41,16 @@ FILE_ALLOWLIST = (
     "assets/icon-set-v1.0/witnessops-vscodium.png",
     "assets/icon-set-v1.0/witnessops-screenshot.png",
 )
-OPTIONAL_FILES = ("assets/icon-set-v1.0/SOURCE.json", "assets/icon-set-v1.0/folder-aliases.json",
+OPTIONAL_FILES = ("assets/icon-set-v1.0/SOURCE.json",
                   "tests/test_icon_set_package.py", "tools/preview_icon_set.py")
+# Frozen release inventories are trusted code constants, never learned from an archive.
+# Their records bind every native SVG and Work/Projects alias to the complete v1 set.
+V1_NATIVE_MANIFEST_DIGESTS = {
+    "assets/icon-set-v1.0/PROVENANCE.json":
+        "431ca0359bded3b805838fd27a93cce9d9457f522cc61f6479442475dade7c1c",
+    "assets/icon-set-v1.0/folder-aliases.json":
+        "5237b2dfed38a15ae0de912709b0be155eea15beb79b8aa188cad746984d5d0e",
+}
 EXECUTABLES = {"pack_icon_set.py", "build_icon_set.py", "install_icon_set.py",
                "tools/inventory_icons.py", "tools/launcher_icon_overrides.py", "tools/preview_icon_set.py"}
 AUTHORED = {
@@ -242,6 +251,9 @@ def validate_payload(entries: dict[str, bytes | VerifiedFile], directories: set[
     unrecorded = {name for name in entries if name.startswith(THEME_DIRECTORY + "/") and name.endswith(".svg")} - seen
     if unrecorded:
         raise ValueError("Unrecorded SVG is excluded from publication: " + sorted(unrecorded)[0])
+    for name, expected_digest in V1_NATIVE_MANIFEST_DIGESTS.items():
+        if digest(entries[name]) != expected_digest:
+            raise ValueError("Frozen v1 native inventory differs: " + name)
     # An SVG beside an authored PNG can change which artwork a desktop resolves.
     # Native upstream app SVGs remain in their own advertised Breeze directories.
     for name in entries:

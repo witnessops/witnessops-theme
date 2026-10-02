@@ -8,6 +8,7 @@ import shutil
 import tarfile
 import tempfile
 import unittest
+from unittest.mock import patch
 import zlib
 
 import pack_icon_set as package
@@ -44,12 +45,22 @@ class IconSetPackageTest(unittest.TestCase):
             "[apps/48]\nSize=48\n[apps/16@2x]\nSize=16\nScale=2\n"
             + "".join(f"[{directory}]\nSize={directory.split('/')[1]}\n" for directory in local_directories))
         self.svg = b'<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48"/>'
-        (self.theme / "apps/48/example.svg").write_bytes(self.svg)
+        for name in ("example", "second"):
+            (self.theme / f"apps/48/{name}.svg").write_bytes(self.svg)
         for name in ("COPYRIGHT-BREEZE", "COPYING-BREEZE-ICONS"):
             (self.theme / name).write_text("Breeze license fixture\n")
         provenance = {"theme_identity": package.THEME, "version": package.VERSION,
-                      "file_count": 1, "records": [{"path": "apps/48/example.svg", "sha256": package.digest(self.svg)}]}
+                      "file_count": 2, "records": [{"path": f"apps/48/{name}.svg", "sha256": package.digest(self.svg)}
+                                                   for name in ("example", "second")]}
         (self.root / "assets/icon-set-v1.0/PROVENANCE.json").write_text(json.dumps(provenance))
+        (self.root / "assets/icon-set-v1.0/folder-aliases.json").write_text(
+            json.dumps({"schema_version": 1, "theme_identity": package.THEME, "records": []}))
+        self.release_pins = dict(package.V1_NATIVE_MANIFEST_DIGESTS)
+        # Bind the miniature release once. Repacked or mutated metadata cannot update it.
+        pins = patch.dict(package.V1_NATIVE_MANIFEST_DIGESTS, {})
+        pins.start()
+        self.addCleanup(pins.stop)
+        self.pin_fixture_inventory()
         self.artwork = self.root / "assets/icon-set-v1.0/artwork.json"
         artwork = {"schema_version": 1, "theme_identity": package.THEME, "version": package.VERSION,
                    "assets": [], "rendered": []}
@@ -80,6 +91,11 @@ class IconSetPackageTest(unittest.TestCase):
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text("must be excluded")
 
+    def pin_fixture_inventory(self):
+        """Declare trusted fixture bytes before adversarial archive mutations."""
+        for name in package.V1_NATIVE_MANIFEST_DIGESTS:
+            package.V1_NATIVE_MANIFEST_DIGESTS[name] = package.digest((self.root / name).read_bytes())
+
     def native_asset(self, relative, data):
         path = self.theme / relative
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -89,6 +105,7 @@ class IconSetPackageTest(unittest.TestCase):
         provenance["records"].append({"path": relative, "sha256": package.digest(data)})
         provenance["file_count"] = len(provenance["records"])
         provenance_path.write_text(json.dumps(provenance))
+        self.pin_fixture_inventory()
 
     def folder_aliases(self):
         records = []
@@ -103,6 +120,7 @@ class IconSetPackageTest(unittest.TestCase):
                             "source_sha256": package.digest(data), "sha256": package.digest(data)})
         metadata = self.root / "assets/icon-set-v1.0/folder-aliases.json"
         metadata.write_text(json.dumps({"schema_version": 1, "theme_identity": package.THEME, "records": records}))
+        self.pin_fixture_inventory()
         return metadata, records
 
     def test_allowlist_manifest_and_empty_scaled_directories(self):
@@ -447,7 +465,7 @@ class IconSetPackageTest(unittest.TestCase):
                 provenance["file_count"] = len(provenance["records"])
                 entries[provenance_name] = json.dumps(provenance).encode()
                 archive = self.write_self_manifested_archive(entries, directories)
-                with self.assertRaisesRegex(ValueError, "Missing native folder alias metadata"):
+                with self.assertRaisesRegex(ValueError, "Missing mandatory public payload"):
                     package.verify_archive(archive)
 
     def test_verifier_rejects_reserved_alias_native_provenance_with_manifest_present(self):
@@ -476,11 +494,11 @@ class IconSetPackageTest(unittest.TestCase):
         metadata, _ = self.folder_aliases()
         entries, directories = package.collect(self.root)
         metadata.unlink()
-        with self.assertRaisesRegex(ValueError, "Missing native folder alias metadata"):
+        with self.assertRaisesRegex(ValueError, "Missing required regular file"):
             package.collect(self.root)
         entries.pop(metadata.relative_to(self.root).as_posix())
         archive = self.write_self_manifested_archive(entries, directories)
-        with self.assertRaisesRegex(ValueError, "Missing native folder alias metadata"):
+        with self.assertRaisesRegex(ValueError, "Missing mandatory public payload"):
             package.verify_archive(archive)
 
     def test_reserved_alias_names_cannot_be_native_records_in_other_categories(self):
@@ -522,6 +540,82 @@ class IconSetPackageTest(unittest.TestCase):
         metadata.write_text(json.dumps({"schema_version": 1, "theme_identity": package.THEME, "records": records}))
         with self.assertRaisesRegex(ValueError, "Folder alias is outside"):
             package.collect(self.root)
+
+    def test_frozen_release_pins_match_committed_native_manifests(self):
+        for name, expected in self.release_pins.items():
+            with self.subTest(name=name):
+                self.assertEqual(package.digest((package.ROOT / name).read_bytes()), expected)
+
+    def test_verifier_rejects_native_set_truncated_to_one_rewritten_record(self):
+        self.folder_aliases()
+        entries, directories = package.collect(self.root)
+        provenance_name = "assets/icon-set-v1.0/PROVENANCE.json"
+        provenance = json.loads(entries[provenance_name])
+        retained = provenance["records"][0]
+        for name in tuple(entries):
+            if name.startswith(package.THEME_DIRECTORY + "/") and name.endswith(".svg"):
+                if name != package.THEME_DIRECTORY + "/" + retained["path"]:
+                    entries.pop(name)
+        provenance.update(records=[retained], file_count=1)
+        entries[provenance_name] = json.dumps(provenance).encode()
+        # Both manifests and checksums agree with the reduced payload, but the trusted pins do not.
+        aliases_name = "assets/icon-set-v1.0/folder-aliases.json"
+        aliases = json.loads(entries[aliases_name])
+        aliases["records"] = []
+        entries[aliases_name] = json.dumps(aliases).encode()
+        archive = self.write_self_manifested_archive(entries, directories)
+        with self.assertRaisesRegex(ValueError, "Frozen v1 native inventory differs"):
+            package.verify_archive(archive)
+        entries.pop(aliases_name)
+        archive = self.write_self_manifested_archive(entries, directories)
+        with self.assertRaisesRegex(ValueError, "Missing mandatory public payload"):
+            package.verify_archive(archive)
+
+    def test_collect_rejects_self_consistent_truncated_native_inventory(self):
+        provenance_path = self.root / "assets/icon-set-v1.0/PROVENANCE.json"
+        provenance = json.loads(provenance_path.read_bytes())
+        removed = provenance["records"].pop()
+        (self.theme / removed["path"]).unlink()
+        provenance["file_count"] = len(provenance["records"])
+        provenance_path.write_text(json.dumps(provenance))
+        with self.assertRaisesRegex(ValueError, "Frozen v1 native inventory differs"):
+            package.collect(self.root)
+
+    def test_verifier_rejects_same_count_native_path_and_hash_rewrites(self):
+        original, directories = package.collect(self.root)
+        provenance_name = "assets/icon-set-v1.0/PROVENANCE.json"
+        for replace_path in (False, True):
+            with self.subTest(replace_path=replace_path):
+                entries = dict(original)
+                provenance = json.loads(entries[provenance_name])
+                record = provenance["records"][0]
+                old_name = package.THEME_DIRECTORY + "/" + record["path"]
+                changed = entries.pop(old_name) + b"replacement icon"
+                if replace_path:
+                    record["path"] = "apps/48/replacement.svg"
+                entries[package.THEME_DIRECTORY + "/" + record["path"]] = changed
+                record["sha256"] = package.digest(changed)
+                entries[provenance_name] = json.dumps(provenance).encode()
+                archive = self.write_self_manifested_archive(entries, directories)
+                with self.assertRaisesRegex(ValueError, "Frozen v1 native inventory differs"):
+                    package.verify_archive(archive)
+
+    def test_verifier_rejects_rewritten_alias_manifest_after_alias_omission(self):
+        self.folder_aliases()
+        original, directories = package.collect(self.root)
+        aliases_name = "assets/icon-set-v1.0/folder-aliases.json"
+        for remove_all in (False, True):
+            with self.subTest(remove_all=remove_all):
+                entries = dict(original)
+                aliases = json.loads(entries[aliases_name])
+                removed = list(aliases["records"]) if remove_all else [aliases["records"][0]]
+                for record in removed:
+                    entries.pop(package.THEME_DIRECTORY + "/" + record["path"])
+                    aliases["records"].remove(record)
+                entries[aliases_name] = json.dumps(aliases).encode()
+                archive = self.write_self_manifested_archive(entries, directories)
+                with self.assertRaisesRegex(ValueError, "Frozen v1 native inventory differs"):
+                    package.verify_archive(archive)
 
     def test_optional_preview_tool_is_allowlisted(self):
         source = self.root / "tools/preview_icon_set.py"

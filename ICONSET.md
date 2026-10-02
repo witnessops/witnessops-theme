@@ -179,7 +179,13 @@ v1.0 set, its selected artwork, implementation, relevant tests, documentation an
 licenses. Only the fixed native category/size SVG subtrees and selected app PNGs
 are accepted; every SVG also requires matching provenance. The archive verifier
 requires the mandatory scripts, licenses, theme index and artwork, then checks
-the same provenance and authored-size rules against the bytes it reads. A
+the same provenance and authored-size rules against the bytes it reads. Both
+native manifests are mandatory and their SHA256 digests are pinned in the v1
+packer, binding verification to all 50,201 native SVGs and 22 Work/Projects
+aliases. Rewriting manifests and checksums cannot authorize a reduced or
+substituted native set. A deliberate new baseline requires reviewing changes
+to the pinned digests together with its icon inventory; even manifest
+reformatting changes those digests. A
 self-consistent checksum manifest alone is insufficient. Third-party notices
 come directly from the required `THIRD_PARTY_NOTICES.md` source file. The archive
 `README.md` is this document.
